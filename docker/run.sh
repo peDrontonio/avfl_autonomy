@@ -14,7 +14,7 @@ xhost +local:docker 2>/dev/null
 echo "=========================================="
 echo "Starting container: ${CONTAINER_NAME}"
 echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}"
-echo "Mounting workspace: ${WORKSPACE_DIR}/src"
+echo "Mounting workspace: ${WORKSPACE_DIR}"
 echo "=========================================="
 
 docker run -it --rm \
@@ -27,7 +27,7 @@ docker run -it --rm \
     -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
     -v /dev/dri:/dev/dri \
     -v /dev/input:/dev/input \
-    -v "${WORKSPACE_DIR}/src:/root/ros2_ws/src/user_packages:rw" \
+    -v "${WORKSPACE_DIR}:/root/internship_ws/src/avfl_autonomy:rw" \
     -v "${HOME}/.gazebo:/root/.gazebo:rw" \
     ${IMAGE_NAME}:${IMAGE_TAG} \
     "$@"
