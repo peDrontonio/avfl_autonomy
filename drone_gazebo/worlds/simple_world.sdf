@@ -290,28 +290,28 @@
     <include>
       <uri>model://aruco_marker_0</uri>
       <name>aruco_marker_0</name>
-      <pose>1.5 0 5.0 0 0 3.14159</pose>
+      <pose>1.5 0.15 5.0 1.57079 0 0</pose>
     </include>
 
     <!-- Marcador ArUco 1 - Ponta Traseira (Trás) -->
     <include>
       <uri>model://aruco_marker_1</uri>
       <name>aruco_marker_1</name>
-      <pose>-1.5 0 5.0 0 0 0</pose>
+      <pose>-1.5 0.15 5.0 1.57079 0 0</pose>
     </include>
 
     <!-- Marcador ArUco 2 - Ponta Inferior -->
     <include>
       <uri>model://aruco_marker_2</uri>
       <name>aruco_marker_2</name>
-      <pose>0 0 2.0 0 0 1.57079</pose>
+      <pose>-1.5 0.15 2.0 1.57079 0 0</pose>
     </include>
 
     <!-- Marcador ArUco 3 - Ponta Superior -->
     <include>
       <uri>model://aruco_marker_3</uri>
       <name>aruco_marker_3</name>
-      <pose>0 0 5.0 0 0 1.57079</pose>
+      <pose>1.5 0.15 2.0 1.57079 0 0</pose>
     </include>
 
   </world>
