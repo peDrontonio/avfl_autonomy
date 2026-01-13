@@ -12,6 +12,18 @@ def generate_launch_description():
     # Path to the world file
     world_file = os.path.join(pkg_drone_gazebo, 'worlds', 'simple_world.sdf')
     
+    # Path to models directory
+    models_path = os.path.join(pkg_drone_gazebo, 'models')
+    
+    # Set environment variable for Gazebo to find models
+    gz_sim_resource_path = os.environ.get('GZ_SIM_RESOURCE_PATH', '')
+    if gz_sim_resource_path:
+        gz_sim_resource_path = f"{models_path}:{gz_sim_resource_path}"
+    else:
+        gz_sim_resource_path = models_path
+    
+    os.environ['GZ_SIM_RESOURCE_PATH'] = gz_sim_resource_path
+    
     # Declare launch arguments
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
     verbose = LaunchConfiguration('verbose', default='false')
