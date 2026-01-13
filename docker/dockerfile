@@ -100,6 +100,19 @@ RUN pip3 install --no-cache-dir \
     dronekit-sitl
 
 # ============================================
+# Install MicroXRCEDDSGen (required for ardupilot_sitl)
+# ============================================
+RUN apt-get update && apt-get install -y default-jre \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt
+RUN git clone --recurse-submodules https://github.com/ardupilot/Micro-XRCE-DDS-Gen.git \
+    && cd Micro-XRCE-DDS-Gen \
+    && ./gradlew assemble
+
+ENV PATH="/opt/Micro-XRCE-DDS-Gen/scripts:${PATH}"
+
+# ============================================
 # Install MAVROS for ROS 2
 # ============================================
 RUN apt-get update && apt-get install -y \
@@ -177,7 +190,7 @@ RUN . /opt/ros/humble/setup.sh \
 
 WORKDIR /root/internship_ws
 
-# Install dependencies (build at runtime)
+# Install dependencies only (build at runtime for flexibility)
 RUN . /opt/ros/humble/setup.sh \
     && . /opt/ros_gz_ws/install/setup.sh \
     && export GZ_VERSION=harmonic \
@@ -185,6 +198,9 @@ RUN . /opt/ros/humble/setup.sh \
     && rosdep update \
     && rosdep install -y --from-paths src --ignore-src -r \
     && rm -rf /var/lib/apt/lists/*
+
+# Note: Run 'colcon build --symlink-install' after starting the container
+# This allows for faster development iteration without rebuilding the Docker image
 
 # ============================================
 # Environment setup

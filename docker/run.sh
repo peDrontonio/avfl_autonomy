@@ -1,7 +1,7 @@
 #!/bin/bash
 
 IMAGE_NAME="ardupilot-gazebo-ros2"
-IMAGE_TAG="latest"
+IMAGE_TAG="humble-harmonic"
 CONTAINER_NAME="ardupilot-sim"
 
 # Get the workspace directory (parent of docker folder)
