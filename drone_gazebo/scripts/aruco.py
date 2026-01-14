@@ -3,7 +3,7 @@ import numpy as np
 import math
 
 
-MARKER_SIZE = 0.205      # 20.5 cm
+MARKER_SIZE = 0.18      # 18 cm
 GAP_X = 1.5 - MARKER_SIZE            
 GAP_Y = 1.5 - MARKER_SIZE            
 
