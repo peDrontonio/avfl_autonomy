@@ -1,60 +1,90 @@
+"""Launch simple_world in Gazebo and RViz."""
 import os
+from pathlib import Path
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import ExecuteProcess, DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
+from launch.conditions import IfCondition
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch_ros.actions import Node
+from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
-    # Get the package directory
+    """Generate a launch description for simple_world."""
+    # Get the package directories
     pkg_drone_gazebo = get_package_share_directory('drone_gazebo')
+    pkg_drone_description = get_package_share_directory('drone_description')
+    pkg_ros_gz_sim = get_package_share_directory('ros_gz_sim')
     
     # Path to the world file
     world_file = os.path.join(pkg_drone_gazebo, 'worlds', 'simple_world.sdf')
     
-    # Path to models directory
+    # Path to models directories
     models_path = os.path.join(pkg_drone_gazebo, 'models')
+    drone_models_path = os.path.join(pkg_drone_description, 'models')
     
     # Set environment variable for Gazebo to find models
     gz_sim_resource_path = os.environ.get('GZ_SIM_RESOURCE_PATH', '')
     if gz_sim_resource_path:
-        gz_sim_resource_path = f"{models_path}:{gz_sim_resource_path}"
+        gz_sim_resource_path = f"{models_path}:{drone_models_path}:{gz_sim_resource_path}"
     else:
-        gz_sim_resource_path = models_path
+        gz_sim_resource_path = f"{models_path}:{drone_models_path}"
     
     os.environ['GZ_SIM_RESOURCE_PATH'] = gz_sim_resource_path
     
-    # Declare launch arguments
-    use_sim_time = LaunchConfiguration('use_sim_time', default='true')
-    verbose = LaunchConfiguration('verbose', default='false')
-    
-    declare_use_sim_time_cmd = DeclareLaunchArgument(
-        'use_sim_time',
-        default_value='true',
-        description='Use simulation (Gazebo) clock if true'
+    # Nelore robot
+    nelore = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            [
+                PathJoinSubstitution(
+                    [
+                        FindPackageShare("drone_gazebo"),
+                        "launch",
+                        "robots",
+                        "nelore.launch.py",
+                    ]
+                ),
+            ]
+        )
     )
     
-    declare_verbose_cmd = DeclareLaunchArgument(
-        'verbose',
-        default_value='false',
-        description='Set to true to enable verbose output'
+    # Gazebo server
+    gz_sim_server = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            f'{Path(pkg_ros_gz_sim) / "launch" / "gz_sim.launch.py"}'
+        ),
+        launch_arguments={
+            'gz_args': f'-v4 -s -r {world_file}'
+        }.items(),
     )
     
-    # Start Gazebo with the world file
-    gazebo_server = ExecuteProcess(
-        cmd=['gz', 'sim', '-r', '-v', '4', world_file],
+    # Gazebo GUI
+    gz_sim_gui = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            f'{Path(pkg_ros_gz_sim) / "launch" / "gz_sim.launch.py"}'
+        ),
+        launch_arguments={'gz_args': '-v4 -g'}.items(),
+    )
+    
+    # RViz
+    rviz = Node(
+        package='rviz2',
+        executable='rviz2',
+        condition=IfCondition(LaunchConfiguration('rviz')),
+        arguments=['-d', f'{Path(pkg_drone_gazebo) / "rviz" / "simple_world.rviz"}'] if os.path.exists(os.path.join(pkg_drone_gazebo, 'rviz', 'simple_world.rviz')) else [],
         output='screen',
-        shell=False
+        parameters=[{'use_sim_time': True}],
     )
     
     # Create the launch description
-    ld = LaunchDescription()
-    
-    # Add declarations
-    ld.add_action(declare_use_sim_time_cmd)
-    ld.add_action(declare_verbose_cmd)
-    
-    # Add Gazebo server
-    ld.add_action(gazebo_server)
-    
-    return ld
+    return LaunchDescription([
+        DeclareLaunchArgument(
+            'rviz', default_value='true', description='Open RViz.'
+        ),
+        gz_sim_server,
+        gz_sim_gui,
+        nelore,
+        rviz,
+    ])
