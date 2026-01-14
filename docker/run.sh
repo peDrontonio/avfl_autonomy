@@ -8,6 +8,27 @@ CONTAINER_NAME="ardupilot-sim"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_DIR="$(dirname "${SCRIPT_DIR}")"
 
+# Check if we want to exec into existing container
+if [ "$1" == "exec" ] || [ "$1" == "attach" ]; then
+    # Try to find the running container
+    CONTAINER_ID=$(docker ps --filter "name=${CONTAINER_NAME}" --format "{{.ID}}" | head -n 1)
+    
+    if [ -z "$CONTAINER_ID" ]; then
+        echo "=========================================="
+        echo "Error: No running container found!"
+        echo "Make sure the container is running first."
+        echo "=========================================="
+        exit 1
+    fi
+    
+    echo "=========================================="
+    echo "Opening new terminal in container: ${CONTAINER_NAME}"
+    echo "=========================================="
+    
+    docker exec -it ${CONTAINER_ID} /bin/bash
+    exit 0
+fi
+
 # Allow X server connections from Docker
 xhost +local:docker 2>/dev/null
 

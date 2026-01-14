@@ -28,18 +28,17 @@
     </plugin>
 
     <!-- Lighting -->
-    <light type="directional" name="sun">
+    <light type="point" name="sun">
       <cast_shadows>true</cast_shadows>
-      <pose>0 0 10 0 0 0</pose>
-      <diffuse>0.8 0.8 0.8 1</diffuse>
-      <specular>0.2 0.2 0.2 1</specular>
+      <pose>0 5 8 0 0 0</pose>
+      <diffuse>1.0 1.0 1.0 1</diffuse>
+      <specular>0.5 0.5 0.5 1</specular>
       <attenuation>
-        <range>1000</range>
-        <constant>0.9</constant>
+        <range>100</range>
+        <constant>0.1</constant>
         <linear>0.01</linear>
-        <quadratic>0.001</quadratic>
+        <quadratic>0.0001</quadratic>
       </attenuation>
-      <direction>-0.5 0.1 -0.9</direction>
     </light>
 
     <!-- Ground Plane -->
@@ -181,19 +180,19 @@
     <!-- Quadrado flutuante a 1.5m - Lado 1 (Frente) -->
     <model name="floating_square_front">
       <static>true</static>
-      <pose>1.5 0 3.5 0 0 0</pose>
+      <pose>0.75 0 2 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
             <box>
-              <size>0.3 0.3 3.0</size>
+              <size>0.1 0.1 1.5</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>0.3 0.3 3.0</size>
+              <size>0.1 0.1 1.5</size>
             </box>
           </geometry>
           <material>
@@ -208,19 +207,19 @@
     <!-- Quadrado flutuante a 1.5m - Lado 2 (Trás) -->
     <model name="floating_square_back">
       <static>true</static>
-      <pose>-1.5 0 3.5 0 0 0</pose>
+      <pose>-0.75 0 2 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
             <box>
-              <size>0.3 0.3 3.0</size>
+              <size>0.1 0.1 1.5</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>0.3 0.3 3.0</size>
+              <size>0.1 0.1 1.5</size>
             </box>
           </geometry>
           <material>
@@ -235,19 +234,19 @@
     <!-- Quadrado flutuante a 1.5m - Lado 3 (Esquerda) -->
     <model name="floating_square_left">
       <static>true</static>
-      <pose>0 0 2 0 1.57 0</pose>
+      <pose>0 0 2.75 0 1.57 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
             <box>
-              <size>0.3 0.3 3.0</size>
+              <size>0.1 0.1 1.5</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>0.3 0.3 3.0</size>
+              <size>0.1 0.1 1.5</size>
             </box>
           </geometry>
           <material>
@@ -262,19 +261,19 @@
     <!-- Quadrado flutuante a 1.5m - Lado 4 (Direita) -->
     <model name="floating_square_right">
       <static>true</static>
-      <pose>0 0 5.0 0 1.57 0</pose>
+      <pose>0 0 1.25 0 1.57 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
             <box>
-              <size>0.3 0.3 3.0</size>
+              <size>0.1 0.1 1.5</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>0.3 0.3 3.0</size>
+              <size>0.1 0.1 1.5</size>
             </box>
           </geometry>
           <material>
@@ -290,28 +289,35 @@
     <include>
       <uri>model://aruco_marker_0</uri>
       <name>aruco_marker_0</name>
-      <pose>1.5 0.15 5.0 1.57079 0 0</pose>
+      <pose>0.75 0.05 2.75 1.57079 0 0</pose>
     </include>
 
     <!-- Marcador ArUco 1 - Ponta Traseira (Trás) -->
     <include>
       <uri>model://aruco_marker_1</uri>
       <name>aruco_marker_1</name>
-      <pose>-1.5 0.15 5.0 1.57079 0 0</pose>
+      <pose>-0.75 0.05 2.75 1.57079 0 0</pose>
     </include>
 
     <!-- Marcador ArUco 2 - Ponta Inferior -->
     <include>
       <uri>model://aruco_marker_2</uri>
       <name>aruco_marker_2</name>
-      <pose>-1.5 0.15 2.0 1.57079 0 0</pose>
+      <pose>-0.75 0.05 1.25 1.57079 0 0</pose>
     </include>
 
     <!-- Marcador ArUco 3 - Ponta Superior -->
     <include>
       <uri>model://aruco_marker_3</uri>
       <name>aruco_marker_3</name>
-      <pose>1.5 0.15 2.0 1.57079 0 0</pose>
+      <pose>0.75 0.05 1.25 1.57079 0 0</pose>
+    </include>
+
+    <!-- Nelore Drone -->
+    <include>
+      <uri>model://nelore</uri>
+      <name>nelore</name>
+      <pose degrees="true">0 4 0.195 0 0 -90</pose>
     </include>
 
   </world>
