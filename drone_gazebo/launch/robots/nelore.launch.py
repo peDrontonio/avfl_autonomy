@@ -80,7 +80,7 @@ def generate_launch_description():
             "transport": "udp4",
             "port": "2019",
             "synthetic_clock": "True",
-            "wipe": "False",
+            "wipe": "True",
             "model": "json",
             "speedup": "1",
             "slave": "0",
