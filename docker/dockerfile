@@ -198,10 +198,8 @@ RUN . /opt/ros/humble/setup.sh \
     && apt-get update \
     && rosdep update \
     && rosdep install -y --from-paths src --ignore-src -r \
-    && rm -rf /var/lib/apt/lists/*
-
-# Note: Run 'colcon build --symlink-install' after starting the container
-# This allows for faster development iteration without rebuilding the Docker image
+    && rm -rf /var/lib/apt/lists/* \
+    && colcon build --symlink-install
 
 # ============================================
 # Environment setup
