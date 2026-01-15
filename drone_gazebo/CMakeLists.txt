@@ -47,4 +47,13 @@ install(DIRECTORY
   DESTINATION share/${PROJECT_NAME}/
 )
 
+# Install Python scripts
+install(PROGRAMS
+  scripts/simple_mission.py
+  scripts/aruco.py
+  scripts/generate_aruco_markers.py
+  scripts/view_camera.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 ament_package()
