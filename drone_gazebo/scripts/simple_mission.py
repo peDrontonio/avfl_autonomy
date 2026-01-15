@@ -34,7 +34,7 @@ class SimpleMissionNode(Node):
         self.declare_parameter('velocity', 1.0)
         
         self.square_side = self.get_parameter('square_side').value
-        self.velocity = self.get_parameter('velocity').valueSize of the square side in meters
+        self.velocity = self.get_parameter('velocity').value
         
         # Mission state
         self.state = MissionState.IDLE
