@@ -17,6 +17,7 @@ def generate_launch_description():
     pkg_drone_gazebo = get_package_share_directory('drone_gazebo')
     pkg_drone_description = get_package_share_directory('drone_description')
     pkg_ros_gz_sim = get_package_share_directory('ros_gz_sim')
+    pkg_ardupilot_gazebo = get_package_share_directory('ardupilot_gazebo')
     
     # Path to the world file
     world_file = os.path.join(pkg_drone_gazebo, 'worlds', 'simple_world.sdf')
@@ -34,7 +35,7 @@ def generate_launch_description():
     
     os.environ['GZ_SIM_RESOURCE_PATH'] = gz_sim_resource_path
     
-    # Nelore robot
+    # Nelore robot (SITL + bridges) - launches after Gazebo starts
     nelore = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             [
@@ -69,11 +70,14 @@ def generate_launch_description():
     )
     
     # RViz
+    pkg_ardupilot_gz_bringup = get_package_share_directory('ardupilot_gz_bringup')
+    rviz_config = os.path.join(pkg_ardupilot_gz_bringup, 'rviz', 'drone_gazebo_simple_world.rviz')
+    
     rviz = Node(
         package='rviz2',
         executable='rviz2',
         condition=IfCondition(LaunchConfiguration('rviz')),
-        arguments=['-d', f'{Path(pkg_drone_gazebo) / "rviz" / "simple_world.rviz"}'] if os.path.exists(os.path.join(pkg_drone_gazebo, 'rviz', 'simple_world.rviz')) else [],
+        arguments=['-d', rviz_config] if os.path.exists(rviz_config) else [],
         output='screen',
         parameters=[{'use_sim_time': True}],
     )
