@@ -29,6 +29,7 @@ RUN apt-get update && apt-get install -y \
     python3-colcon-common-extensions \
     python3-rosdep \
     software-properties-common \
+    lsof \
     && rm -rf /var/lib/apt/lists/*
 
 # ============================================
@@ -161,8 +162,8 @@ RUN apt-get update && apt-get install -y \
         junitparser \
         lxml \
         matplotlib \
-        numpy \
-        opencv-python \
+        "numpy<1.25.0" \
+        "opencv-python<=4.9.0.80" \
         pyserial \
         pyyaml \
         requests \
@@ -197,10 +198,8 @@ RUN . /opt/ros/humble/setup.sh \
     && apt-get update \
     && rosdep update \
     && rosdep install -y --from-paths src --ignore-src -r \
-    && rm -rf /var/lib/apt/lists/*
-
-# Note: Run 'colcon build --symlink-install' after starting the container
-# This allows for faster development iteration without rebuilding the Docker image
+    && rm -rf /var/lib/apt/lists/* \
+    && colcon build --symlink-install
 
 # ============================================
 # Environment setup
@@ -208,6 +207,16 @@ RUN . /opt/ros/humble/setup.sh \
 # Add ArduPilot to PATH
 ENV PATH="/opt/ardupilot/Tools/autotest:${PATH}"
 ENV PATH="/opt/ardupilot/build/sitl/bin:${PATH}"
+
+# Configure ~/.bashrc with workspace source and GZ_VERSION export
+RUN echo "" >> /root/.bashrc \
+    && echo "# ROS 2 workspace setup" >> /root/.bashrc \
+    && echo "if [ -f ~/internship_ws/install/setup.bash ]; then" >> /root/.bashrc \
+    && echo "    source ~/internship_ws/install/setup.bash" >> /root/.bashrc \
+    && echo "fi" >> /root/.bashrc \
+    && echo "" >> /root/.bashrc \
+    && echo "# Gazebo version export" >> /root/.bashrc \
+    && echo "export GZ_VERSION=harmonic" >> /root/.bashrc
 
 # Create entrypoint script
 RUN echo '#!/bin/bash\n\

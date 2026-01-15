@@ -33,4 +33,10 @@ ament_environment_hooks(
 ament_environment_hooks(
   "${CMAKE_CURRENT_SOURCE_DIR}/hooks/${PROJECT_NAME}.sh.in")
 
+# Install models
+install(DIRECTORY
+  models
+  DESTINATION share/${PROJECT_NAME}/
+)
+
 ament_package()
