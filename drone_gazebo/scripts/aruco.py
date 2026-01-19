@@ -86,7 +86,7 @@ class DroneTrackerNode(Node):
         self.publisher_ = self.create_publisher(PoseStamped, 'drone_pose', 10)
         
         # Subscriber
-        # Topic: /camera (from Gazebo simulation)
+        # Topic: /camera/image (from Gazebo simulation)
         # Type: Image
         self.subscription = self.create_subscription(
             Image,
@@ -97,17 +97,39 @@ class DroneTrackerNode(Node):
         # CvBridge for converting ROS Image to OpenCV
         self.bridge = CvBridge()
         
-        # Aruco Setup
-        self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+        # Aruco Setup - IMPORTANT: Markers were generated with DICT_6X6_250
+        # Using new OpenCV 4.7+ API with ArucoDetector
+        self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
         self.aruco_params = cv2.aruco.DetectorParameters()
+        
+        # Optimize detection parameters for better performance
+        self.aruco_params.adaptiveThreshWinSizeMin = 3
+        self.aruco_params.adaptiveThreshWinSizeMax = 23
+        self.aruco_params.adaptiveThreshWinSizeStep = 10
+        self.aruco_params.adaptiveThreshConstant = 7
+        self.aruco_params.minMarkerPerimeterRate = 0.03
+        self.aruco_params.maxMarkerPerimeterRate = 4.0
+        self.aruco_params.polygonalApproxAccuracyRate = 0.05
+        self.aruco_params.minCornerDistanceRate = 0.05
+        self.aruco_params.minDistanceToBorder = 3
+        self.aruco_params.minMarkerDistanceRate = 0.05
+        self.aruco_params.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
+        self.aruco_params.cornerRefinementWinSize = 5
+        self.aruco_params.cornerRefinementMaxIterations = 30
+        self.aruco_params.cornerRefinementMinAccuracy = 0.1
+        
+        self.aruco_detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
         
         # Map Setup
         self.obj_points_map = {
-            2: get_marker_corners(-dx, -dy, MARKER_SIZE),
-            3: get_marker_corners(+dx, -dy, MARKER_SIZE),
-            1: get_marker_corners(+dx, +dy, MARKER_SIZE),
-            0: get_marker_corners(-dx, +dy, MARKER_SIZE)
+            0: get_marker_corners(-dx, -dy, MARKER_SIZE),
+            2: get_marker_corners(+dx, -dy, MARKER_SIZE),
+            3: get_marker_corners(+dx, +dy, MARKER_SIZE),
+            1: get_marker_corners(-dx, +dy, MARKER_SIZE)
         }
+        
+        # Logging control
+        self.last_marker_count = -1
         
         self.get_logger().info("Drone Tracker Node Started. Subscribing to /camera, Publishing to /drone_pose")
 
@@ -120,7 +142,28 @@ class DroneTrackerNode(Node):
             return
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        corners, ids, _ = cv2.aruco.detectMarkers(gray, self.aruco_dict, parameters=self.aruco_params)
+        
+        # Apply image preprocessing for better detection
+        # Equalize histogram to improve contrast
+        gray = cv2.equalizeHist(gray)
+        
+        # Optional: Apply slight Gaussian blur to reduce noise
+        gray = cv2.GaussianBlur(gray, (3, 3), 0)
+        
+        corners, ids, _ = self.aruco_detector.detectMarkers(gray)
+
+        # Log marker detection
+        current_count = len(ids) if ids is not None else 0
+        if current_count != self.last_marker_count:
+            if current_count == 0:
+                self.get_logger().info('No ArUco markers detected')
+            elif current_count == 1:
+                marker_id = ids[0][0]
+                self.get_logger().info(f'1 ArUco marker detected (ID: {marker_id})')
+            else:
+                marker_ids = [int(ids[i][0]) for i in range(len(ids))]
+                self.get_logger().info(f'{current_count} ArUco markers detected (IDs: {marker_ids})')
+            self.last_marker_count = current_count
 
         if ids is not None:
             all_img_pts = []
