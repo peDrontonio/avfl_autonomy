@@ -49,14 +49,12 @@ install(DIRECTORY
 
 # Install Python scripts
 install(PROGRAMS
-  scripts/simple_mission.py
-  scripts/centralized_mission.py
   scripts/aruco.py
+  scripts/aruco_debug_viewer.py
+  scripts/centralized_mission.py
   scripts/generate_aruco_markers.py
+  scripts/simple_mission.py
   scripts/view_camera.py
-  scripts/test_aruco_detection.py
-  scripts/advanced_aruco_test.py
-  scripts/test_camera_feed.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

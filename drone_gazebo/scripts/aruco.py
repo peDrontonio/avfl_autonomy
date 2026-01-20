@@ -13,7 +13,7 @@ import sys
 # ==========================================
 # 1. CONFIGURATION
 # ==========================================
-MARKER_SIZE = 0.18      
+MARKER_SIZE = 0.36      # Increased by 2x (was 0.18)
 GAP_X = 1.5 - MARKER_SIZE            
 GAP_Y = 1.5 - MARKER_SIZE            
 
