@@ -17,6 +17,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPo
 
 from geometry_msgs.msg import TwistStamped
 from sensor_msgs.msg import Image
+from ardupilot_msgs.srv import ModeSwitch
 from cv_bridge import CvBridge
 import cv2
 import numpy as np
@@ -32,7 +33,9 @@ class MissionState(Enum):
     CENTERING_X = 4
     CENTERING_Y = 5
     FLY_THROUGH = 6
-    COMPLETED = 7
+    CROSSING = 7      # Cross completely through the arch
+    LANDING = 8        # Land the drone
+    COMPLETED = 9
 
 
 class CentralizedMissionNode(Node):
@@ -49,6 +52,7 @@ class CentralizedMissionNode(Node):
         self.declare_parameter('centering_threshold_x', 20.0)  # pixels tolerance for X centering
         self.declare_parameter('centering_threshold_y', 20.0)  # pixels tolerance for Y centering
         self.declare_parameter('fly_through_distance', 5.0)  # meters to fly after centering
+        self.declare_parameter('crossing_distance', 1.5)  # additional meters to cross completely through arch
         
         self.search_velocity = self.get_parameter('search_velocity').value
         self.centering_velocity = self.get_parameter('centering_velocity').value
@@ -57,6 +61,7 @@ class CentralizedMissionNode(Node):
         self.centering_threshold_x = self.get_parameter('centering_threshold_x').value
         self.centering_threshold_y = self.get_parameter('centering_threshold_y').value
         self.fly_through_distance = self.get_parameter('fly_through_distance').value
+        self.crossing_distance = self.get_parameter('crossing_distance').value
         
         # ==========================================
         # ARUCO CONFIGURATION
@@ -144,6 +149,9 @@ class CentralizedMissionNode(Node):
             '/ap/cmd_vel', 
             qos_profile
         )
+        
+        # Service client for mode switching (landing)
+        self.mode_switch_client = self.create_client(ModeSwitch, '/ap/mode_switch')
         
         self.bridge = CvBridge()
         self.camera_sub = self.create_subscription(
@@ -348,7 +356,8 @@ class CentralizedMissionNode(Node):
             MissionState.ADVANCING,
             MissionState.CENTERING_X,
             MissionState.CENTERING_Y,
-            MissionState.FLY_THROUGH
+            MissionState.FLY_THROUGH,
+            MissionState.CROSSING
         ]
         if self.state in active_states:
             self.current_vel_cmd.header.stamp = self.get_clock().now().to_msg()
@@ -392,6 +401,8 @@ class CentralizedMissionNode(Node):
                 MissionState.CENTERING_X: 'CENTERING X - Aligning horizontally with gate',
                 MissionState.CENTERING_Y: 'CENTERING Y - Aligning vertically with gate',
                 MissionState.FLY_THROUGH: 'FLY THROUGH - Passing through the gate!',
+                MissionState.CROSSING: 'CROSSING - Completing arch crossing',
+                MissionState.LANDING: 'LANDING - Activating land mode',
                 MissionState.COMPLETED: 'COMPLETED - Mission finished!'
             }
             self.log_state_change(state_messages.get(self.state, str(self.state)))
@@ -417,6 +428,12 @@ class CentralizedMissionNode(Node):
             
         elif self.state == MissionState.FLY_THROUGH:
             self.do_fly_through()
+            
+        elif self.state == MissionState.CROSSING:
+            self.do_crossing()
+            
+        elif self.state == MissionState.LANDING:
+            self.do_landing()
             
         elif self.state == MissionState.COMPLETED:
             self.get_logger().info('=== Mission completed successfully! ===')
@@ -619,8 +636,9 @@ class CentralizedMissionNode(Node):
         # Check if we've flown through
         if distance >= self.fly_through_distance:
             self.stop_movement()
-            self.get_logger().info('>>> GATE PASSED SUCCESSFULLY!')
-            self.state = MissionState.COMPLETED
+            self.get_logger().info('>>> GATE PASSED! Now crossing completely...')
+            self.state = MissionState.CROSSING
+            self.move_start_time = None
             return
         
         # Try to maintain centering while flying forward
@@ -648,6 +666,72 @@ class CentralizedMissionNode(Node):
             self.log_counter = 0
             progress_pct = (distance / self.fly_through_distance) * 100
             self.get_logger().info(f'Flying through gate: {distance:.1f}m / {self.fly_through_distance}m ({progress_pct:.0f}%)')
+
+    def do_crossing(self):
+        """Cross completely through the arch by flying an additional distance."""
+        
+        # Initialize movement
+        if self.move_start_time is None:
+            self.move_start_time = time.time()
+            self.get_logger().info(f'>>> CROSSING: Moving {self.crossing_distance}m forward to clear the arch completely')
+        
+        # Calculate distance traveled
+        elapsed = time.time() - self.move_start_time
+        distance = elapsed * self.fly_velocity
+        
+        # Check if we've crossed completely
+        if distance >= self.crossing_distance:
+            self.stop_movement()
+            self.get_logger().info('>>> ARCH CROSSED COMPLETELY! Preparing to land...')
+            self.state = MissionState.LANDING
+            self.move_start_time = None
+            return
+        
+        # Fly straight forward
+        self.set_velocity(self.fly_velocity, 0.0, 0.0)
+        
+        # Log progress periodically
+        self.log_counter += 1
+        if self.log_counter >= self.LOG_INTERVAL:
+            self.log_counter = 0
+            progress_pct = (distance / self.crossing_distance) * 100
+            self.get_logger().info(f'Crossing arch: {distance:.1f}m / {self.crossing_distance}m ({progress_pct:.0f}%)')
+
+    def do_landing(self):
+        """Activate flight mode 9 (LAND) to land the drone."""
+        
+        self.stop_movement()
+        
+        self.get_logger().info('>>> LANDING: Activating flight mode 9 (LAND)...')
+        
+        # Check if service is available
+        if not self.mode_switch_client.wait_for_service(timeout_sec=2.0):
+            self.get_logger().error('Mode switch service not available! Cannot land automatically.')
+            self.get_logger().info('Please land manually using: ros2 service call /ap/mode_switch ardupilot_msgs/srv/ModeSwitch "{mode: 9}"')
+            self.state = MissionState.COMPLETED
+            return
+        
+        # Create service request for mode 9 (LAND)
+        request = ModeSwitch.Request()
+        request.mode = 9  # LAND mode
+        
+        # Call service asynchronously
+        future = self.mode_switch_client.call_async(request)
+        future.add_done_callback(self.landing_callback)
+        
+        self.get_logger().info('>>> Land mode request sent!')
+        self.state = MissionState.COMPLETED
+
+    def landing_callback(self, future):
+        """Callback for landing mode switch service response."""
+        try:
+            response = future.result()
+            if response.status:
+                self.get_logger().info('>>> LAND MODE ACTIVATED SUCCESSFULLY!')
+            else:
+                self.get_logger().warn('>>> Land mode activation returned false. Check drone state.')
+        except Exception as e:
+            self.get_logger().error(f'>>> Failed to activate land mode: {e}')
 
 
 def main(args=None):
