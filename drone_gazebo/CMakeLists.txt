@@ -50,11 +50,11 @@ install(DIRECTORY
 # Install Python scripts
 install(PROGRAMS
   scripts/aruco.py
-  scripts/aruco_debug_viewer.py
   scripts/centralized_mission.py
   scripts/generate_aruco_markers.py
   scripts/simple_mission.py
   scripts/view_camera.py
+  scripts/aruco_detector_new.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
