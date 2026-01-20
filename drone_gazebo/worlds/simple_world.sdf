@@ -67,6 +67,20 @@
       </attenuation>
     </light>
 
+    <!-- Additional light for lower markers -->
+    <light type="point" name="lower_marker_light">
+      <cast_shadows>false</cast_shadows>
+      <pose>0 2 1.5 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.3 0.3 0.3 1</specular>
+      <attenuation>
+        <range>8</range>
+        <constant>0.4</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+    </light>
+
     <spherical_coordinates>
       <latitude_deg>-35.3632621</latitude_deg>
       <longitude_deg>149.1652374</longitude_deg>
