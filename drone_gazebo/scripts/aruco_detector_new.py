@@ -12,7 +12,7 @@ import math
 # ==========================================
 # 1. CONFIGURATION
 # ==========================================
-DEFAULT_MARKER_SIZE = 0.18
+DEFAULT_MARKER_SIZE = 0.36
 
 # Camera Calibration (640x480)
 FOCAL_LENGTH = 588.0
@@ -57,26 +57,36 @@ class DroneTrackerNode(Node):
     def __init__(self):
         super().__init__('drone_tracker')
         
+        # Publishes the Pose of the markers relative to the drone
         self.pose_pub_ = self.create_publisher(PoseStamped, 'drone_pose', 10)
+        
+        # Publishes the RAW error (Vector from Camera -> Center of Markers)
         self.error_pub_ = self.create_publisher(Vector3, 'aruco_error', 10)
         
         self.subscription = self.create_subscription(
             Image, '/camera/image', self.image_callback, 10)
         
         self.bridge = CvBridge()
+        
+        # --- ARUCO SETUP ---
         self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
         self.aruco_params = cv2.aruco.DetectorParameters()
+        
+        # Tuning for distance (Sensitivity)
+        self.aruco_params.adaptiveThreshWinSizeMin = 3
+        self.aruco_params.adaptiveThreshWinSizeMax = 23
+        self.aruco_params.adaptiveThreshWinSizeStep = 2
+        self.aruco_params.minMarkerPerimeterRate = 0.01 
+        
         self.detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
         
         self.standard_obj_points = get_marker_corners(DEFAULT_MARKER_SIZE)
         
         self.last_log_time = self.get_clock().now()
-        
-        self.get_logger().info("Drone Tracker Node STARTED (With Status Flags).")
+        self.get_logger().info("Drone Tracker Node STARTED (Centroid Mode + ID Log).")
 
     def image_callback(self, msg):
         current_time = self.get_clock().now()
-        # Logar apenas a cada 1 segundo (1e9 nanosegundos)
         should_log = (current_time - self.last_log_time).nanoseconds > 1e9
 
         try:
@@ -85,112 +95,89 @@ class DroneTrackerNode(Node):
             return
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = cv2.equalizeHist(gray) 
+        
         corners, ids, _ = self.detector.detectMarkers(gray)
 
         if ids is not None and len(ids) > 0:
             
-            detected_tvecs = []
-            detected_centers_2d = [] 
+            # --- 1. Get IDs for Logging (Visual only, not used for math) ---
+            detected_ids_list = ids.flatten().tolist()
+            detected_ids_list.sort()
+
+            # --- 2. Math Processing (Agnostic to IDs) ---
+            accumulated_tvec = np.array([0.0, 0.0, 0.0])
+            count = 0
             ref_rvec = None 
-            
-            # --- PROCESSAMENTO ---
+
             for i in range(len(ids)):
                 img_pts = corners[i][0]
+                
                 success, rvec, tvec = cv2.solvePnP(
-                    self.standard_obj_points, img_pts, CAMERA_MATRIX, DIST_COEFFS, flags=cv2.SOLVEPNP_ITERATIVE
+                    self.standard_obj_points, 
+                    img_pts, 
+                    CAMERA_MATRIX, 
+                    DIST_COEFFS, 
+                    flags=cv2.SOLVEPNP_ITERATIVE
                 )
                 
                 if success:
-                    detected_tvecs.append(tvec.flatten()) 
-                    c_x = np.mean(img_pts[:, 0])
-                    c_y = np.mean(img_pts[:, 1])
-                    detected_centers_2d.append((c_x, c_y))
+                    accumulated_tvec += tvec.flatten()
+                    count += 1
                     if ref_rvec is None: ref_rvec = rvec
 
-            count = len(detected_tvecs)
             if count == 0: return
 
-            # --- LÓGICA E FLAGS ---
-            final_x, final_y, final_z = 0.0, 0.0, 0.0
-            log_mode_str = ""
-            detected_ids_list = ids.flatten().tolist()
+            # Calculate Average (Centroid)
+            avg_x = accumulated_tvec[0] / count
+            avg_y = accumulated_tvec[1] / count
+            avg_z = accumulated_tvec[2] / count
+            
+            # --- 3. Publish /aruco_error (For PID Control) ---
+            error_msg = Vector3()
+            error_msg.x = float(avg_x)
+            error_msg.y = float(avg_y)
+            error_msg.z = float(avg_z)
+            self.error_pub_.publish(error_msg)
 
-            # CASO 1: Apenas 1 Aruco
-            if count == 1:
-                t = detected_tvecs[0]
-                final_x = 0.0  
-                final_y = 0.0  
-                final_z = float(t[2])
-                log_mode_str = "SINGLE MARKER (Z Only)"
-
-            # CASO 2: 2 Arucos
-            elif count == 2:
-                t1, t2 = detected_tvecs[0], detected_tvecs[1]
-                c1, c2 = detected_centers_2d[0], detected_centers_2d[1]
-                
-                dx_pixel = abs(c1[0] - c2[0])
-                dy_pixel = abs(c1[1] - c2[1])
-                
-                if dx_pixel > dy_pixel:
-                    # Horizontais
-                    final_x = float((t1[0] + t2[0]) / 2.0)
-                    final_y = 0.0 
-                    final_z = float((t1[2] + t2[2]) / 2.0)
-                    log_mode_str = "DUAL HORIZONTAL (Avg X, Z | Y Locked)"
-                else:
-                    # Verticais
-                    final_x = 0.0
-                    final_y = float((t1[1] + t2[1]) / 2.0)
-                    final_z = float((t1[2] + t2[2]) / 2.0)
-                    log_mode_str = "DUAL VERTICAL (Avg Y, Z | X Locked)"
-
-            # CASO 3: 3+ Arucos
-            else:
-                sum_x = sum(t[0] for t in detected_tvecs)
-                sum_y = sum(t[1] for t in detected_tvecs)
-                sum_z = sum(t[2] for t in detected_tvecs)
-                
-                final_x = float(sum_x / count)
-                final_y = float(sum_y / count)
-                final_z = float(sum_z / count)
-                log_mode_str = f"MULTI MARKER ({count}) (Full Centroid)"
-
-            # --- PUBLICAÇÃO ---
+            # --- 4. Publish /drone_pose (Global Pose Estimation) ---
             R, _ = cv2.Rodrigues(ref_rvec)
-            R_inv = np.transpose(R) 
+            R_inv = np.transpose(R)
+            t_vec_avg = np.array([avg_x, avg_y, avg_z])
+            
+            cam_world_pos = -np.dot(R_inv, t_vec_avg)
+            
             roll, pitch, yaw = rotationMatrixToEulerAngles(R_inv)
             q = euler_to_quaternion(roll, pitch, yaw)
 
             msg = PoseStamped()
             msg.header.stamp = self.get_clock().now().to_msg()
-            msg.header.frame_id = "camera_visual_center"
-            msg.pose.position.x = final_x
-            msg.pose.position.y = final_y
-            msg.pose.position.z = final_z
+            msg.header.frame_id = "camera_link"
+            
+            msg.pose.position.x = float(cam_world_pos[0])
+            msg.pose.position.y = float(cam_world_pos[1])
+            msg.pose.position.z = float(cam_world_pos[2])
             msg.pose.orientation.x = q[0]
             msg.pose.orientation.y = q[1]
             msg.pose.orientation.z = q[2]
             msg.pose.orientation.w = q[3]
             self.pose_pub_.publish(msg)
 
-            error_msg = Vector3()
-            error_msg.x = final_x
-            error_msg.y = final_y
-            error_msg.z = final_z
-            self.error_pub_.publish(error_msg)
-
-            # --- LOGGING / FLAGS ---
+            # --- Logging ---
             if should_log:
                 self.get_logger().info("========================================")
-                self.get_logger().info(f" VISUAL: {count} ArUcos detected")
-                self.get_logger().info(f" IDs:    {detected_ids_list}")
-                self.get_logger().info(f" MODE:   {log_mode_str}")
-                self.get_logger().info(f" PUB /aruco_error -> X: {final_x:.3f} | Y: {final_y:.3f} | Z: {final_z:.3f}")
+                self.get_logger().info(f" COUNT: {count} markers detected")
+                self.get_logger().info(f" IDs:   {detected_ids_list}")  # <--- SHOWS IDs HERE
+                self.get_logger().info(f" ERROR: X={avg_x:.2f} | Y={avg_y:.2f} | Z={avg_z:.2f}")
                 self.get_logger().info("========================================")
                 self.last_log_time = current_time
 
+            # Visual Debug 
+            cv2.drawFrameAxes(frame, CAMERA_MATRIX, DIST_COEFFS, ref_rvec, np.array([avg_x, avg_y, avg_z]), 0.1)
+            cv2.imshow("Centroid Tracker", frame)
+            cv2.waitKey(1)
+
         else:
-            # Log de "Nada encontrado"
             if should_log:
                 self.get_logger().warn("NO MARKERS VISIBLE")
                 self.last_log_time = current_time
