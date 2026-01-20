@@ -11,10 +11,16 @@ find_package(rosidl_default_generators REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(ardupilot_msgs REQUIRED)
 find_package(rclpy REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 
 # Generate service interfaces
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/Navigate.srv"
+  "srv/GetTelemetry.srv"
   DEPENDENCIES geometry_msgs ardupilot_msgs
 )
 
@@ -23,6 +29,12 @@ install(PROGRAMS
   drone_navigate/navigate_guided.py
   DESTINATION lib/${PROJECT_NAME}
   RENAME navigate_guided
+)
+
+install(PROGRAMS
+  drone_navigate/telemetry_node.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME telemetry_node
 )
 
 if(BUILD_TESTING)
