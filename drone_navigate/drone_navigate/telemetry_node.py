@@ -94,13 +94,14 @@ class TelemetryNode(Node):
         self.geopose_received = False
         self.velocity_received = False
 
-        # --- Subscribers ---
+        # --- Subscribers (in callback group for concurrency) ---
         # Local pose (EKF filtered position in local frame)
         self.pose_sub = self.create_subscription(
             PoseStamped,
             '/ap/pose/filtered',
             self.pose_callback,
-            qos
+            qos,
+            callback_group=self.callback_group
         )
 
         # Global geopose (GPS coordinates)
@@ -108,7 +109,8 @@ class TelemetryNode(Node):
             GeoPoseStamped,
             '/ap/geopose/filtered',
             self.geopose_callback,
-            qos
+            qos,
+            callback_group=self.callback_group
         )
 
         # Velocity (try different topic names ArduPilot might use)
@@ -116,7 +118,8 @@ class TelemetryNode(Node):
             TwistStamped,
             '/ap/twist/filtered',
             self.velocity_callback,
-            qos
+            qos,
+            callback_group=self.callback_group
         )
 
         # --- Service Server ---

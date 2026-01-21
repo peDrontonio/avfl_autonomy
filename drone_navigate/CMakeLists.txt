@@ -21,6 +21,7 @@ find_package(std_msgs REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/Navigate.srv"
   "srv/GetTelemetry.srv"
+  "srv/NavigateGlobal.srv"
   DEPENDENCIES geometry_msgs ardupilot_msgs
 )
 
@@ -34,6 +35,12 @@ install(PROGRAMS
   drone_navigate/navigate_service.py
   DESTINATION lib/${PROJECT_NAME}
   RENAME navigate_service
+)
+
+install(PROGRAMS
+  drone_navigate/navigate_global_service.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME navigate_global_service
 )
 
 if(BUILD_TESTING)
