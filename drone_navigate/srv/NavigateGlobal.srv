@@ -1,0 +1,13 @@
+# NavigateGlobal.srv - GPS-based navigation service
+# Request: Navigate using GPS coordinates (lat/lon)
+float64 lat
+float64 lon
+float32 z
+float32 yaw
+float32 speed
+string frame_id
+bool auto_arm
+---
+# Response
+bool success
+string message
