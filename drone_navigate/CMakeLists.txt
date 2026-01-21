@@ -24,17 +24,16 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   DEPENDENCIES geometry_msgs ardupilot_msgs
 )
 
-# Install Python scripts
-install(PROGRAMS
-  drone_navigate/navigate_guided.py
-  DESTINATION lib/${PROJECT_NAME}
-  RENAME navigate_guided
-)
-
 install(PROGRAMS
   drone_navigate/telemetry_node.py
   DESTINATION lib/${PROJECT_NAME}
   RENAME telemetry_node
+)
+
+install(PROGRAMS
+  drone_navigate/navigate_service.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME navigate_service
 )
 
 if(BUILD_TESTING)
