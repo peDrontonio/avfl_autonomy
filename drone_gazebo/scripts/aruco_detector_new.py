@@ -3,6 +3,7 @@
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped, Vector3
+from std_msgs.msg import String  # For receiving mission state
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 import cv2
@@ -13,7 +14,7 @@ import math
 # 1. CONFIGURATION
 # ==========================================
 DEFAULT_MARKER_SIZE = 0.25
-REQUIRED_MARKERS = 4  # <--- NEW: Strict requirement
+REQUIRED_MARKERS = 4 
 
 # Camera Calibration (640x480)
 FOCAL_LENGTH = 588.0
@@ -61,6 +62,10 @@ class DroneTrackerNode(Node):
         self.pose_pub_ = self.create_publisher(PoseStamped, 'drone_pose', 10)
         self.error_pub_ = self.create_publisher(Vector3, 'aruco_error', 10)
         
+        # Subscribe to Mission State for HUD
+        self.state_sub = self.create_subscription(String, '/mission_state', self.state_callback, 10)
+        self.current_mission_state = "IDLE"
+
         self.subscription = self.create_subscription(
             Image, '/camera/image', self.image_callback, 10)
         
@@ -69,7 +74,7 @@ class DroneTrackerNode(Node):
         self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
         self.aruco_params = cv2.aruco.DetectorParameters()
         
-        # Tuning
+        # Tuning for better detection at distance
         self.aruco_params.adaptiveThreshWinSizeMin = 3
         self.aruco_params.adaptiveThreshWinSizeMax = 23
         self.aruco_params.adaptiveThreshWinSizeStep = 2
@@ -79,12 +84,12 @@ class DroneTrackerNode(Node):
         self.standard_obj_points = get_marker_corners(DEFAULT_MARKER_SIZE)
         
         self.last_log_time = self.get_clock().now()
-        self.get_logger().info(f"Drone Tracker STARTED. Waiting for {REQUIRED_MARKERS} markers...")
+        self.get_logger().info(f"Drone Tracker HUD Ready. Waiting for images...")
+
+    def state_callback(self, msg):
+        self.current_mission_state = msg.data
 
     def image_callback(self, msg):
-        current_time = self.get_clock().now()
-        should_log = (current_time - self.last_log_time).nanoseconds > 1e9
-
         try:
             frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
         except Exception:
@@ -94,6 +99,12 @@ class DroneTrackerNode(Node):
         gray = cv2.equalizeHist(gray) 
         
         corners, ids, _ = self.detector.detectMarkers(gray)
+
+        # Draw HUD (Heads Up Display)
+        # Background box for text
+        cv2.rectangle(frame, (10, 10), (350, 60), (0, 0, 0), -1)
+        cv2.putText(frame, f"MODE: {self.current_mission_state}", (20, 40), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
         if ids is not None and len(ids) > 0:
             
@@ -114,19 +125,21 @@ class DroneTrackerNode(Node):
                     count += 1
                     if ref_rvec is None: ref_rvec = rvec
 
-            # --- STRICT CHECK: IGNORE IF NOT ALL MARKERS FOUND ---
-            if count < REQUIRED_MARKERS:
-                if should_log:
-                    self.get_logger().warn(f"Scanning... Found {count}/{REQUIRED_MARKERS} markers. Ignoring.")
-                    self.last_log_time = current_time
-                
-                # Visual debug even if ignored
-                cv2.aruco.drawDetectedMarkers(frame, corners, ids)
-                cv2.imshow("Centroid Tracker", frame)
-                cv2.waitKey(1)
-                return  # <--- CRITICAL: Stops publishing so Mission keeps searching
+            # --- HUD: Marker Count ---
+            color = (0, 255, 0) if count >= REQUIRED_MARKERS else (0, 0, 255)
+            cv2.putText(frame, f"Markers: {count}/{REQUIRED_MARKERS}", (20, 80), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
 
-            # --- If we get here, we found all 4 ---
+            # Draw all markers
+            cv2.aruco.drawDetectedMarkers(frame, corners, ids)
+
+            # --- STRICT CHECK ---
+            if count < REQUIRED_MARKERS:
+                cv2.imshow("Drone HUD", frame)
+                cv2.waitKey(1)
+                return 
+
+            # --- Found 4 Markers ---
             avg_x = accumulated_tvec[0] / count
             avg_y = accumulated_tvec[1] / count
             avg_z = accumulated_tvec[2] / count
@@ -137,40 +150,20 @@ class DroneTrackerNode(Node):
             error_msg.y = float(avg_y)
             error_msg.z = float(avg_z)
             self.error_pub_.publish(error_msg)
-
-            # Publish Pose
-            R, _ = cv2.Rodrigues(ref_rvec)
-            R_inv = np.transpose(R)
-            t_vec_avg = np.array([avg_x, avg_y, avg_z])
-            cam_world_pos = -np.dot(R_inv, t_vec_avg)
             
-            roll, pitch, yaw = rotationMatrixToEulerAngles(R_inv)
-            q = euler_to_quaternion(roll, pitch, yaw)
-
-            msg = PoseStamped()
-            msg.header.stamp = self.get_clock().now().to_msg()
-            msg.header.frame_id = "camera_link"
-            msg.pose.position.x = float(cam_world_pos[0])
-            msg.pose.position.y = float(cam_world_pos[1])
-            msg.pose.position.z = float(cam_world_pos[2])
-            msg.pose.orientation.x = q[0]
-            msg.pose.orientation.y = q[1]
-            msg.pose.orientation.z = q[2]
-            msg.pose.orientation.w = q[3]
-            self.pose_pub_.publish(msg)
-
-            if should_log:
-                self.get_logger().info(f"LOCKED! {count} markers. Dist: {avg_z:.2f}m")
-                self.last_log_time = current_time
-
-            cv2.drawFrameAxes(frame, CAMERA_MATRIX, DIST_COEFFS, ref_rvec, np.array([avg_x, avg_y, avg_z]), 0.1)
-            cv2.imshow("Centroid Tracker", frame)
-            cv2.waitKey(1)
+            # Draw Axis
+            if ref_rvec is not None:
+                cv2.drawFrameAxes(frame, CAMERA_MATRIX, DIST_COEFFS, ref_rvec, np.array([avg_x, avg_y, avg_z]), 0.1)
+                # Show Distance on HUD
+                cv2.putText(frame, f"Dist: {avg_z:.2f}m", (20, 110), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
 
         else:
-            if should_log:
-                self.get_logger().info("Searching...")
-                self.last_log_time = current_time
+            cv2.putText(frame, "SCANNING...", (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 165, 255), 2)
+
+        # Show the window (Keep it open!)
+        cv2.imshow("Drone HUD", frame)
+        cv2.waitKey(1)
 
 def main(args=None):
     rclpy.init(args=args)
