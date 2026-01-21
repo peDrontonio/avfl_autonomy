@@ -12,7 +12,8 @@ import math
 # ==========================================
 # 1. CONFIGURATION
 # ==========================================
-DEFAULT_MARKER_SIZE = 0.36
+DEFAULT_MARKER_SIZE = 0.25
+REQUIRED_MARKERS = 4  # <--- NEW: Strict requirement
 
 # Camera Calibration (640x480)
 FOCAL_LENGTH = 588.0
@@ -57,10 +58,7 @@ class DroneTrackerNode(Node):
     def __init__(self):
         super().__init__('drone_tracker')
         
-        # Publishes the Pose of the markers relative to the drone
         self.pose_pub_ = self.create_publisher(PoseStamped, 'drone_pose', 10)
-        
-        # Publishes the RAW error (Vector from Camera -> Center of Markers)
         self.error_pub_ = self.create_publisher(Vector3, 'aruco_error', 10)
         
         self.subscription = self.create_subscription(
@@ -68,22 +66,20 @@ class DroneTrackerNode(Node):
         
         self.bridge = CvBridge()
         
-        # --- ARUCO SETUP ---
         self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
         self.aruco_params = cv2.aruco.DetectorParameters()
         
-        # Tuning for distance (Sensitivity)
+        # Tuning
         self.aruco_params.adaptiveThreshWinSizeMin = 3
         self.aruco_params.adaptiveThreshWinSizeMax = 23
         self.aruco_params.adaptiveThreshWinSizeStep = 2
         self.aruco_params.minMarkerPerimeterRate = 0.01 
         
         self.detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
-        
         self.standard_obj_points = get_marker_corners(DEFAULT_MARKER_SIZE)
         
         self.last_log_time = self.get_clock().now()
-        self.get_logger().info("Drone Tracker Node STARTED (Centroid Mode + ID Log).")
+        self.get_logger().info(f"Drone Tracker STARTED. Waiting for {REQUIRED_MARKERS} markers...")
 
     def image_callback(self, msg):
         current_time = self.get_clock().now()
@@ -101,50 +97,51 @@ class DroneTrackerNode(Node):
 
         if ids is not None and len(ids) > 0:
             
-            # --- 1. Get IDs for Logging (Visual only, not used for math) ---
             detected_ids_list = ids.flatten().tolist()
             detected_ids_list.sort()
 
-            # --- 2. Math Processing (Agnostic to IDs) ---
             accumulated_tvec = np.array([0.0, 0.0, 0.0])
             count = 0
             ref_rvec = None 
 
             for i in range(len(ids)):
                 img_pts = corners[i][0]
-                
                 success, rvec, tvec = cv2.solvePnP(
-                    self.standard_obj_points, 
-                    img_pts, 
-                    CAMERA_MATRIX, 
-                    DIST_COEFFS, 
-                    flags=cv2.SOLVEPNP_ITERATIVE
+                    self.standard_obj_points, img_pts, CAMERA_MATRIX, DIST_COEFFS, flags=cv2.SOLVEPNP_ITERATIVE
                 )
-                
                 if success:
                     accumulated_tvec += tvec.flatten()
                     count += 1
                     if ref_rvec is None: ref_rvec = rvec
 
-            if count == 0: return
+            # --- STRICT CHECK: IGNORE IF NOT ALL MARKERS FOUND ---
+            if count < REQUIRED_MARKERS:
+                if should_log:
+                    self.get_logger().warn(f"Scanning... Found {count}/{REQUIRED_MARKERS} markers. Ignoring.")
+                    self.last_log_time = current_time
+                
+                # Visual debug even if ignored
+                cv2.aruco.drawDetectedMarkers(frame, corners, ids)
+                cv2.imshow("Centroid Tracker", frame)
+                cv2.waitKey(1)
+                return  # <--- CRITICAL: Stops publishing so Mission keeps searching
 
-            # Calculate Average (Centroid)
+            # --- If we get here, we found all 4 ---
             avg_x = accumulated_tvec[0] / count
             avg_y = accumulated_tvec[1] / count
             avg_z = accumulated_tvec[2] / count
             
-            # --- 3. Publish /aruco_error (For PID Control) ---
+            # Publish Error
             error_msg = Vector3()
             error_msg.x = float(avg_x)
             error_msg.y = float(avg_y)
             error_msg.z = float(avg_z)
             self.error_pub_.publish(error_msg)
 
-            # --- 4. Publish /drone_pose (Global Pose Estimation) ---
+            # Publish Pose
             R, _ = cv2.Rodrigues(ref_rvec)
             R_inv = np.transpose(R)
             t_vec_avg = np.array([avg_x, avg_y, avg_z])
-            
             cam_world_pos = -np.dot(R_inv, t_vec_avg)
             
             roll, pitch, yaw = rotationMatrixToEulerAngles(R_inv)
@@ -153,7 +150,6 @@ class DroneTrackerNode(Node):
             msg = PoseStamped()
             msg.header.stamp = self.get_clock().now().to_msg()
             msg.header.frame_id = "camera_link"
-            
             msg.pose.position.x = float(cam_world_pos[0])
             msg.pose.position.y = float(cam_world_pos[1])
             msg.pose.position.z = float(cam_world_pos[2])
@@ -163,23 +159,17 @@ class DroneTrackerNode(Node):
             msg.pose.orientation.w = q[3]
             self.pose_pub_.publish(msg)
 
-            # --- Logging ---
             if should_log:
-                self.get_logger().info("========================================")
-                self.get_logger().info(f" COUNT: {count} markers detected")
-                self.get_logger().info(f" IDs:   {detected_ids_list}")  # <--- SHOWS IDs HERE
-                self.get_logger().info(f" ERROR: X={avg_x:.2f} | Y={avg_y:.2f} | Z={avg_z:.2f}")
-                self.get_logger().info("========================================")
+                self.get_logger().info(f"LOCKED! {count} markers. Dist: {avg_z:.2f}m")
                 self.last_log_time = current_time
 
-            # Visual Debug 
             cv2.drawFrameAxes(frame, CAMERA_MATRIX, DIST_COEFFS, ref_rvec, np.array([avg_x, avg_y, avg_z]), 0.1)
             cv2.imshow("Centroid Tracker", frame)
             cv2.waitKey(1)
 
         else:
             if should_log:
-                self.get_logger().warn("NO MARKERS VISIBLE")
+                self.get_logger().info("Searching...")
                 self.last_log_time = current_time
 
 def main(args=None):
