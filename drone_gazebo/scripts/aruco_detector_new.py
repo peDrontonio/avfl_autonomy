@@ -34,17 +34,59 @@ class DroneTrackerNode(Node):
         self.current_mission_state = "IDLE"
         self.subscription = self.create_subscription(Image, '/camera/image', self.image_callback, 10)
         self.bridge = CvBridge()
+        
+        # --- ARUCO SETUP ---
         self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
         self.aruco_params = cv2.aruco.DetectorParameters()
+        
+        # Robust Parameter Tuning
+        # Broader window range helps detect markers even if lighting creates gradients
         self.aruco_params.adaptiveThreshWinSizeMin = 3
-        self.aruco_params.adaptiveThreshWinSizeMax = 23
-        self.aruco_params.adaptiveThreshWinSizeStep = 2
+        self.aruco_params.adaptiveThreshWinSizeMax = 35 # Increased max window
+        self.aruco_params.adaptiveThreshWinSizeStep = 4
+        # Loosen polygonal approximation to accept slightly distorted/noisy shapes
+        self.aruco_params.polygonalApproxAccuracyRate = 0.05 
+        # Lower constant helps in low contrast, though may increase false positives (noise)
+        self.aruco_params.adaptiveThreshConstant = 5 
+
         self.detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
         self.standard_obj_points = get_marker_corners(DEFAULT_MARKER_SIZE)
-        self.get_logger().info("Detector Ready.")
+        
+        self.clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        
+        self.sharpen_kernel = np.array([[0, -1, 0], 
+                                        [-1, 5, -1], 
+                                        [0, -1, 0]])
+
+        self.get_logger().info("Robust Detector Ready.")
 
     def state_callback(self, msg):
         self.current_mission_state = msg.data
+
+    def adjust_gamma(self, image, target_brightness=110):
+        mean_brightness = np.mean(image)
+        
+        if mean_brightness == 0: mean_brightness = 1
+        
+        gamma = math.log(target_brightness / 255.0) / math.log(mean_brightness / 255.0)
+        
+        gamma = max(0.3, min(3.0, gamma))
+
+        invGamma = 1.0 / gamma
+        table = np.array([((i / 255.0) ** invGamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
+        
+        return cv2.LUT(image, table)
+
+    def preprocess_image(self, frame):
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        
+        gray = self.adjust_gamma(gray)
+
+        gray = self.clahe.apply(gray)
+        
+        gray = cv2.filter2D(gray, -1, self.sharpen_kernel)
+        
+        return gray
 
     def image_callback(self, msg):
         try:
@@ -52,11 +94,10 @@ class DroneTrackerNode(Node):
         except Exception:
             return
 
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        gray = cv2.equalizeHist(gray) 
-        corners, ids, _ = self.detector.detectMarkers(gray)
+        processed_gray = self.preprocess_image(frame)
+        
+        corners, ids, _ = self.detector.detectMarkers(processed_gray)
 
-        # HUD
         cv2.rectangle(frame, (10, 10), (350, 60), (0, 0, 0), -1)
         cv2.putText(frame, f"MODE: {self.current_mission_state}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
@@ -77,6 +118,7 @@ class DroneTrackerNode(Node):
             cv2.aruco.drawDetectedMarkers(frame, corners, ids)
 
             if count < REQUIRED_MARKERS:
+                cv2.imshow("Processed View", processed_gray)
                 cv2.imshow("Drone HUD", frame)
                 cv2.waitKey(1)
                 return 
@@ -96,6 +138,7 @@ class DroneTrackerNode(Node):
                 cv2.putText(frame, f"Dist: {avg_z:.2f}m", (20, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
         else:
             cv2.putText(frame, "SCANNING...", (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 165, 255), 2)
+            cv2.imshow("Processed View", processed_gray)
 
         cv2.imshow("Drone HUD", frame)
         cv2.waitKey(1)
