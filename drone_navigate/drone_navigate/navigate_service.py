@@ -313,65 +313,95 @@ class NavigateServiceNode(Node):
             curr_x = self.current_pose.pose.position.x
             curr_y = self.current_pose.pose.position.y
             curr_z = self.current_pose.pose.position.z
+            curr_yaw = self.current_yaw
             target = self.target_position.copy()
             speed = self.nav_speed
 
-        # Calculate error
-        err_x = target['x'] - curr_x
-        err_y = target['y'] - curr_y
+        # Calculate error in MAP frame
+        err_x_map = target['x'] - curr_x
+        err_y_map = target['y'] - curr_y
         err_z = target['z'] - curr_z
-        distance = math.sqrt(err_x**2 + err_y**2 + err_z**2)
+        distance = math.sqrt(err_x_map**2 + err_y_map**2 + err_z**2)
 
         # Log progress
         self.get_logger().info(
             f"Nav: dist={distance:.2f}m, "
             f"pos=({curr_x:.2f}, {curr_y:.2f}, {curr_z:.2f}), "
-            f"target=({target['x']:.2f}, {target['y']:.2f}, {target['z']:.2f})",
+            f"target=({target['x']:.2f}, {target['y']:.2f}, {target['z']:.2f}), "
+            f"yaw={math.degrees(curr_yaw):.1f}°",
             throttle_duration_sec=1.0
         )
 
         # Check if reached
         if distance < self.position_tolerance:
             self.get_logger().info(f"Target reached! Final pos: ({curr_x:.2f}, {curr_y:.2f}, {curr_z:.2f})")
-            self.stop_drone()
+            # First set flags to stop the control loop from running again
             with self.state_lock:
                 self.target_position = None
                 self.is_navigating = False
+            # Then send stop commands
+            self.stop_drone()
             return
 
-        # Calculate velocity (proportional control)
-        vel_x = self.kp_xy * err_x
-        vel_y = self.kp_xy * err_y
+        # Calculate velocity in MAP frame (proportional control)
+        vel_x_map = self.kp_xy * err_x_map
+        vel_y_map = self.kp_xy * err_y_map
         vel_z = self.kp_z * err_z
 
-        # Limit XY speed
-        speed_xy = math.sqrt(vel_x**2 + vel_y**2)
+        # Limit XY speed in map frame
+        speed_xy = math.sqrt(vel_x_map**2 + vel_y_map**2)
         if speed_xy > speed:
             scale = speed / speed_xy
-            vel_x *= scale
-            vel_y *= scale
+            vel_x_map *= scale
+            vel_y_map *= scale
 
         # Limit Z speed
         max_vz = speed * 0.5
         if abs(vel_z) > max_vz:
             vel_z = math.copysign(max_vz, vel_z)
 
-        # Publish velocity
+        # Transform velocity from MAP frame (ENU) to BODY frame
+        # MAP frame (ENU): X=East, Y=North, Z=Up
+        # BODY frame: X=Forward, Y=Left, Z=Up
+        # Yaw is measured from East (X+) towards North (Y+), counter-clockwise
+        # When yaw=0, drone points East. When yaw=90°, drone points North.
+        #
+        # Transformation from ENU to body:
+        # vel_forward = vel_east * cos(yaw) + vel_north * sin(yaw)
+        # vel_left = -vel_east * sin(yaw) + vel_north * cos(yaw)
+        cos_yaw = math.cos(curr_yaw)
+        sin_yaw = math.sin(curr_yaw)
+        vel_x_body = vel_x_map * cos_yaw + vel_y_map * sin_yaw   # forward
+        vel_y_body = -vel_x_map * sin_yaw + vel_y_map * cos_yaw  # left
+
+        # Publish velocity in body frame
         msg = TwistStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = "base_link"
-        msg.twist.linear.x = vel_x
-        msg.twist.linear.y = vel_y
+        msg.twist.linear.x = vel_x_body
+        msg.twist.linear.y = vel_y_body
         msg.twist.linear.z = vel_z
         self.vel_pub.publish(msg)
 
     def stop_drone(self):
-        """Send zero velocity command."""
+        """Send zero velocity command multiple times to ensure drone stops."""
+        self.get_logger().info("Stopping drone...")
         msg = TwistStamped()
-        msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = "base_link"
-        self.vel_pub.publish(msg)
-        self.get_logger().info("Drone stopped.")
+        msg.twist.linear.x = 0.0
+        msg.twist.linear.y = 0.0
+        msg.twist.linear.z = 0.0
+        msg.twist.angular.x = 0.0
+        msg.twist.angular.y = 0.0
+        msg.twist.angular.z = 0.0
+        
+        # Send stop command multiple times to ensure it's received
+        for _ in range(10):
+            msg.header.stamp = self.get_clock().now().to_msg()
+            self.vel_pub.publish(msg)
+            time.sleep(0.05)
+        
+        self.get_logger().info("Drone stopped (zero velocity sent).")
 
 
 def main(args=None):
