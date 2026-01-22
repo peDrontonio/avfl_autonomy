@@ -71,19 +71,23 @@ class NavigateServiceNode(Node):
         self.timer_callback_group = MutuallyExclusiveCallbackGroup()
 
         # --- Parameters ---
-        self.declare_parameter('position_tolerance', 0.15)
-        self.declare_parameter('yaw_tolerance', 0.1)  # ~5.7 degrees
+        self.declare_parameter('position_tolerance', 0.03)
+        self.declare_parameter('yaw_tolerance', 0.005)  # ~0.29 degrees
         self.declare_parameter('control_rate', 20.0)
         self.declare_parameter('max_velocity', 1.0)
+        self.declare_parameter('max_yaw_rate', 0.5)  # rad/s, ~28 deg/s
         self.declare_parameter('kp_xy', 1.0)
         self.declare_parameter('kp_z', 1.0)
+        self.declare_parameter('kp_yaw', 1.5)
         
         self.position_tolerance = self.get_parameter('position_tolerance').value
         self.yaw_tolerance = self.get_parameter('yaw_tolerance').value
         self.control_rate = self.get_parameter('control_rate').value
         self.max_velocity = self.get_parameter('max_velocity').value
+        self.max_yaw_rate = self.get_parameter('max_yaw_rate').value
         self.kp_xy = self.get_parameter('kp_xy').value
         self.kp_z = self.get_parameter('kp_z').value
+        self.kp_yaw = self.get_parameter('kp_yaw').value
 
         # QoS for ArduPilot topics
         qos = QoSProfile(
@@ -101,6 +105,7 @@ class NavigateServiceNode(Node):
         
         self.target_position = None
         self.target_yaw = None  # Target yaw in radians (None = maintain current)
+        self.target_yaw_rate = None  # Max yaw rate (None = use default)
         self.nav_speed = 0.5
         self.is_navigating = False
         
@@ -240,7 +245,7 @@ class NavigateServiceNode(Node):
     def calculate_target_position(self, request, current_pos: dict) -> dict:
         """Calculate target position based on frame_id."""
         if request.frame_id == 'body':
-            # Body frame: rotate offsets by current yaw
+            # Body frame: relative offset rotated by current yaw
             yaw = current_pos['yaw']
             dx_map = request.x * math.cos(yaw) - request.y * math.sin(yaw)
             dy_map = request.x * math.sin(yaw) + request.y * math.cos(yaw)
@@ -256,17 +261,15 @@ class NavigateServiceNode(Node):
                 f"-> target ({target['x']:.2f}, {target['y']:.2f}, {target['z']:.2f})"
             )
         else:
-            # Map frame: relative to current position
+            # Map frame: absolute position in map coordinates (Clover behavior)
             target = {
-                'x': current_pos['x'] + request.x,
-                'y': current_pos['y'] + request.y,
-                'z': current_pos['z'] + request.z
+                'x': request.x,
+                'y': request.y,
+                'z': request.z
             }
             
             self.get_logger().info(
-                f"Map frame: current ({current_pos['x']:.2f}, {current_pos['y']:.2f}, {current_pos['z']:.2f}) "
-                f"+ ({request.x}, {request.y}, {request.z}) "
-                f"-> target ({target['x']:.2f}, {target['y']:.2f}, {target['z']:.2f})"
+                f"Map frame: absolute target ({target['x']:.2f}, {target['y']:.2f}, {target['z']:.2f})"
             )
 
         return target
@@ -296,8 +299,21 @@ class NavigateServiceNode(Node):
         # Calculate target
         with self.state_lock:
             self.target_position = self.calculate_target_position(request, current_pos)
-            # Set target yaw (None if NaN/not specified, meaning maintain current heading)
-            self.target_yaw = None if math.isnan(request.yaw) else request.yaw
+            
+            # Set target yaw: only if both yaw AND yaw_rate are specified
+            if not math.isnan(request.yaw) and request.yaw_rate > 0:
+                if request.frame_id == 'body':
+                    # Body frame: yaw is relative to current yaw
+                    self.target_yaw = current_pos['yaw'] + request.yaw
+                else:
+                    # Map frame: yaw is absolute
+                    self.target_yaw = request.yaw
+                self.target_yaw_rate = request.yaw_rate
+            else:
+                # No rotation - maintain current yaw
+                self.target_yaw = None
+                self.target_yaw_rate = None
+            
             self.nav_speed = min(request.speed if request.speed > 0 else 0.5, self.max_velocity)
             self.is_navigating = True
 
@@ -334,6 +350,7 @@ class NavigateServiceNode(Node):
         
         # Calculate yaw error if target yaw is specified
         yaw_error = 0.0
+        yaw_rate_cmd = 0.0
         if target_yaw is not None:
             # Normalize yaw error to [-pi, pi]
             yaw_error = target_yaw - curr_yaw
@@ -341,6 +358,14 @@ class NavigateServiceNode(Node):
                 yaw_error -= 2 * math.pi
             while yaw_error < -math.pi:
                 yaw_error += 2 * math.pi
+            
+            # Apply proportional control with yaw rate limiting
+            yaw_rate_cmd = self.kp_yaw * yaw_error
+            if self.target_yaw_rate is not None:  # Apply rate limit
+                yaw_rate_cmd = math.copysign(
+                    min(abs(yaw_rate_cmd), self.target_yaw_rate),
+                    yaw_rate_cmd
+                )
 
         # Log progress
         yaw_str = f"target_yaw={math.degrees(target_yaw):.1f}°, err={math.degrees(yaw_error):.1f}°" if target_yaw is not None else "no_yaw_control"
@@ -404,15 +429,17 @@ class NavigateServiceNode(Node):
             msg.twist.linear.x = vel_x_map  # East velocity
             msg.twist.linear.y = vel_y_map  # North velocity
             msg.twist.linear.z = vel_z      # Up velocity
+            msg.twist.angular.z = yaw_rate_cmd  # Yaw rate
             self.vel_pub.publish(msg)
         else:
-            # Position reached, send zero velocity
+            # Position reached, send zero velocity (but keep yaw control active)
             stop_msg = TwistStamped()
             stop_msg.header.stamp = self.get_clock().now().to_msg()
             stop_msg.header.frame_id = "map"
             stop_msg.twist.linear.x = 0.0
             stop_msg.twist.linear.y = 0.0
             stop_msg.twist.linear.z = 0.0
+            stop_msg.twist.angular.z = yaw_rate_cmd  # Keep rotating to target yaw
             self.vel_pub.publish(stop_msg)
         
         # Publish yaw command if target yaw is specified

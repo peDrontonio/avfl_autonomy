@@ -22,6 +22,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/Navigate.srv"
   "srv/GetTelemetry.srv"
   "srv/NavigateGlobal.srv"
+  "srv/SetYawRate.srv"
   DEPENDENCIES geometry_msgs ardupilot_msgs
 )
 
@@ -41,6 +42,12 @@ install(PROGRAMS
   drone_navigate/navigate_global_service.py
   DESTINATION lib/${PROJECT_NAME}
   RENAME navigate_global_service
+)
+
+install(PROGRAMS
+  drone_navigate/set_yaw_rate_service.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME set_yaw_rate_service
 )
 
 if(BUILD_TESTING)

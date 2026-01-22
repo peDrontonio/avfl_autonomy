@@ -111,15 +111,19 @@ class NavigateGlobalServiceNode(Node):
         self.timer_callback_group = MutuallyExclusiveCallbackGroup()
 
         # --- Parameters ---
-        self.declare_parameter('position_tolerance', 1.0)  # meters (GPS accuracy)
-        self.declare_parameter('altitude_tolerance', 0.5)  # meters
+        self.declare_parameter('position_tolerance', 0.2)  # meters (GPS accuracy)
+        self.declare_parameter('altitude_tolerance', 0.2)  # meters
         self.declare_parameter('control_rate', 5.0)  # Hz (slower for GPS)
         self.declare_parameter('default_speed', 2.0)  # m/s
+        self.declare_parameter('max_yaw_rate', 0.5)  # rad/s
+        self.declare_parameter('kp_yaw', 1.5)
         
         self.position_tolerance = self.get_parameter('position_tolerance').value
         self.altitude_tolerance = self.get_parameter('altitude_tolerance').value
         self.control_rate = self.get_parameter('control_rate').value
         self.default_speed = self.get_parameter('default_speed').value
+        self.max_yaw_rate = self.get_parameter('max_yaw_rate').value
+        self.kp_yaw = self.get_parameter('kp_yaw').value
 
         # QoS for ArduPilot topics
         qos = QoSProfile(
@@ -140,6 +144,7 @@ class NavigateGlobalServiceNode(Node):
         self.target_lon = None
         self.target_alt = None
         self.target_yaw = None
+        self.target_yaw_rate = None  # Max yaw rate
         self.nav_speed = 2.0
         self.is_navigating = False
         
@@ -323,7 +328,16 @@ class NavigateGlobalServiceNode(Node):
             self.target_lat = request.lat
             self.target_lon = request.lon
             self.target_alt = target_alt
-            self.target_yaw = request.yaw if request.yaw != 0 else None
+            
+            # Set target yaw: only if both yaw AND yaw_rate are specified
+            if request.yaw != 0 and request.yaw_rate > 0:
+                self.target_yaw = request.yaw
+                self.target_yaw_rate = request.yaw_rate
+            else:
+                # No rotation - maintain current yaw
+                self.target_yaw = None
+                self.target_yaw_rate = None
+            
             self.nav_speed = request.speed if request.speed > 0 else self.default_speed
             self.is_navigating = True
 

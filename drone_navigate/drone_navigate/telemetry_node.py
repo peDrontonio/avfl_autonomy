@@ -18,6 +18,10 @@ from tf2_ros import TransformException
 
 from geometry_msgs.msg import PoseStamped, TwistStamped
 from geographic_msgs.msg import GeoPoseStamped
+from sensor_msgs.msg import BatteryState
+from ardupilot_msgs.msg import GlobalPosition
+from mavros_msgs.msg import State
+from std_msgs.msg import String as RosString
 from drone_navigate.srv import GetTelemetry
 
 import math
@@ -88,6 +92,8 @@ class TelemetryNode(Node):
         self.current_pose = None          # PoseStamped from /ap/pose/filtered
         self.current_geopose = None       # GeoPoseStamped from /ap/geopose/filtered
         self.current_velocity = None      # TwistStamped from velocity topic
+        self.current_battery = None       # BatteryState from /ap/battery
+        self.current_state = None         # State from /ap/state
         
         # Track data availability
         self.pose_received = False
@@ -118,6 +124,24 @@ class TelemetryNode(Node):
             TwistStamped,
             '/ap/twist/filtered',
             self.velocity_callback,
+            qos,
+            callback_group=self.callback_group
+        )
+
+        # Battery state
+        self.battery_sub = self.create_subscription(
+            BatteryState,
+            '/ap/battery',
+            self.battery_callback,
+            qos,
+            callback_group=self.callback_group
+        )
+
+        # FCU state (connected, armed, mode)
+        self.state_sub = self.create_subscription(
+            State,
+            '/ap/state',
+            self.state_callback,
             qos,
             callback_group=self.callback_group
         )
@@ -154,6 +178,14 @@ class TelemetryNode(Node):
             self.get_logger().info("Velocity data received.")
             self.velocity_received = True
 
+    def battery_callback(self, msg: BatteryState):
+        """Handle battery state updates."""
+        self.current_battery = msg
+
+    def state_callback(self, msg: State):
+        """Handle FCU state updates."""
+        self.current_state = msg
+
     def get_telemetry_callback(self, request, response):
         """
         Service callback to get telemetry data.
@@ -171,6 +203,16 @@ class TelemetryNode(Node):
         # Default frame if not specified
         target_frame = request.frame_id if request.frame_id else 'map'
         response.frame_id = target_frame
+
+        # --- Get State (connected, armed, mode) ---
+        if self.current_state is not None:
+            response.connected = self.current_state.connected
+            response.armed = self.current_state.armed
+            response.mode = self.current_state.mode
+        else:
+            response.connected = False
+            response.armed = False
+            response.mode = "UNKNOWN"
 
         # --- Get Position and Orientation ---
         if self.current_pose is not None:
@@ -294,6 +336,11 @@ class TelemetryNode(Node):
                 response.vx = self.current_velocity.twist.linear.x
                 response.vy = self.current_velocity.twist.linear.y
                 response.vz = self.current_velocity.twist.linear.z
+            
+            # Angular rates (body frame)
+            response.roll_rate = self.current_velocity.twist.angular.x
+            response.pitch_rate = self.current_velocity.twist.angular.y
+            response.yaw_rate = self.current_velocity.twist.angular.z
         else:
             # If no velocity topic, try to estimate from pose changes (not implemented)
             # For now, return zeros or NaN
@@ -301,6 +348,20 @@ class TelemetryNode(Node):
             response.vx = 0.0
             response.vy = 0.0
             response.vz = 0.0
+            response.roll_rate = 0.0
+            response.pitch_rate = 0.0
+            response.yaw_rate = 0.0
+
+        # --- Get Battery Data ---
+        if self.current_battery is not None:
+            response.voltage = self.current_battery.voltage
+            if len(self.current_battery.cell_voltage) > 0:
+                response.cell_voltage = self.current_battery.cell_voltage[0]
+            else:
+                response.cell_voltage = float('nan')
+        else:
+            response.voltage = float('nan')
+            response.cell_voltage = float('nan')
 
         self.get_logger().debug(
             f"Telemetry response: frame={response.frame_id}, "
