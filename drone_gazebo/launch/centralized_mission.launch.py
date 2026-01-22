@@ -5,11 +5,13 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     return LaunchDescription([
-        LogInfo(msg='=== Starting HUD Mission with Adaptive Search ==='),
+        LogInfo(msg='=== Starting Mission: Pattern Search (0 -> +6 -> 0 -> -6 -> 0) ==='),
         
-        DeclareLaunchArgument('search_velocity', default_value='1.2'),
-        DeclareLaunchArgument('search_distance', default_value='4.0'), # Bigger search area
-        DeclareLaunchArgument('advance_distance', default_value='1.5'), # Move forward more
+        # Search Distance: 6.0 meters
+        DeclareLaunchArgument('search_distance', default_value='6.0'), 
+        DeclareLaunchArgument('advance_distance', default_value='0.5'), 
+        
+        DeclareLaunchArgument('search_velocity', default_value='1.0'),
         DeclareLaunchArgument('fly_through_distance', default_value='5.0'),
 
         Node(

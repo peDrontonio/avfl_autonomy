@@ -2,10 +2,9 @@
 """
 Centralized Mission Node
 Features:
-- Publishes State to HUD
-- Zig-Zag Adaptive Search (Right -> Advance -> Left -> Advance)
+- "Flower" Search Pattern: Center -> Right -> Center -> Left -> Center -> Advance
 - 4-Marker Lock Requirement
-- 50% Extra Fly Distance
+- HUD State Publishing
 """
 
 import rclpy
@@ -21,15 +20,18 @@ from enum import Enum
 
 class MissionState(Enum):
     IDLE = 0
-    SEARCHING_RIGHT = 1
-    SEARCHING_LEFT = 2
-    ADVANCING_1 = 3  # Advance after Right Search
-    ADVANCING_2 = 4  # Advance after Left Search
-    CENTERING_X = 5
-    CENTERING_Y = 6
-    FLY_THROUGH = 7
-    LANDING = 8
-    COMPLETED = 9
+    # --- The New Pattern ---
+    SEARCHING_RIGHT = 1       # 0 -> +6m
+    RETURNING_FROM_RIGHT = 2  # +6m -> 0
+    SEARCHING_LEFT = 3        # 0 -> -6m
+    RETURNING_FROM_LEFT = 4   # -6m -> 0
+    ADVANCING = 5             # Move Forward
+    # -----------------------
+    CENTERING_X = 6
+    CENTERING_Y = 7
+    FLY_THROUGH = 8
+    LANDING = 9
+    COMPLETED = 10
 
 class CentralizedMissionNode(Node):
     def __init__(self):
@@ -38,12 +40,14 @@ class CentralizedMissionNode(Node):
         # ==========================================
         # PARAMETERS
         # ==========================================
-        # Increased defaults for "Bigger Area"
         self.declare_parameter('search_velocity', 1.0) 
         self.declare_parameter('centering_velocity', 0.3)
         self.declare_parameter('fly_velocity', 1.0)
-        self.declare_parameter('search_distance', 4.0) # Wider search
-        self.declare_parameter('advance_distance', 1.5) # Move forward more between scans
+        
+        # Distance from Center to the Side (e.g., 6 meters)
+        self.declare_parameter('search_distance', 6.0) 
+        self.declare_parameter('advance_distance', 0.5) 
+        
         self.declare_parameter('centering_threshold_x', 0.1) 
         self.declare_parameter('centering_threshold_y', 0.1)
         self.declare_parameter('default_fly_distance', 5.0)
@@ -63,7 +67,6 @@ class CentralizedMissionNode(Node):
         self.state = MissionState.IDLE
         self.prev_state = MissionState.IDLE
         self.move_start_time = None
-        self.distance_traveled = 0.0
         self.calculated_fly_distance = 0.0 
         
         self.latest_error = Vector3()
@@ -76,19 +79,19 @@ class CentralizedMissionNode(Node):
         qos_profile = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT, history=HistoryPolicy.KEEP_LAST, depth=10)
         
         self.vel_pub = self.create_publisher(TwistStamped, '/ap/cmd_vel', qos_profile)
-        self.state_pub = self.create_publisher(String, '/mission_state', 10) # For HUD
+        self.state_pub = self.create_publisher(String, '/mission_state', 10)
         
         self.mode_switch_client = self.create_client(ModeSwitch, '/ap/mode_switch')
         self.error_sub = self.create_subscription(Vector3, '/aruco_error', self.error_callback, 10)
         
         self.current_vel_cmd = TwistStamped()
         
-        self.mission_timer = self.create_timer(0.1, self.mission_loop)
-        self.vel_timer = self.create_timer(0.05, self.velocity_command_loop)
+        self.create_timer(0.1, self.mission_loop)
+        self.create_timer(0.05, self.velocity_command_loop)
         
         self.create_timer(2.0, self.start_mission)
         self.mission_started = False
-        self.get_logger().info('=== Adaptive Mission Ready ===')
+        self.get_logger().info(f'=== Pattern Mission Ready (0->{self.search_distance}m->0) ===')
 
     def error_callback(self, msg):
         self.latest_error = msg
@@ -103,7 +106,7 @@ class CentralizedMissionNode(Node):
             self.mission_started = True
             self.state = MissionState.SEARCHING_RIGHT
             self.move_start_time = time.time()
-            self.get_logger().info('Mission Started: Wide Search Pattern')
+            self.get_logger().info('Mission Started: Searching Right...')
 
     def velocity_command_loop(self):
         if self.state not in [MissionState.IDLE, MissionState.COMPLETED, MissionState.LANDING]:
@@ -128,26 +131,36 @@ class CentralizedMissionNode(Node):
     # MISSION LOOP
     # ==========================================
     def mission_loop(self):
-        # 1. Publish State for HUD
-        state_msg = String()
-        state_msg.data = self.state.name
-        self.state_pub.publish(state_msg)
+        # Update HUD
+        msg = String()
+        msg.data = self.state.name
+        self.state_pub.publish(msg)
 
-        # 2. Log State Change
         if self.state != self.prev_state:
             self.get_logger().info(f'>>> TRANSITION: {self.state.name}')
             self.prev_state = self.state
         
-        # 3. State Machine
+        # --- THE PATTERN LOGIC ---
         if self.state == MissionState.SEARCHING_RIGHT:
-            self.do_search(direction='right', next_state=MissionState.ADVANCING_1)
-        elif self.state == MissionState.ADVANCING_1:
-            self.do_advancing(next_state=MissionState.SEARCHING_LEFT)
+            # Go 0 -> +6m (Right)
+            self.do_lateral_move(direction='right', distance=self.search_distance, next_state=MissionState.RETURNING_FROM_RIGHT)
+            
+        elif self.state == MissionState.RETURNING_FROM_RIGHT:
+            # Go +6m -> 0 (Left)
+            self.do_lateral_move(direction='left', distance=self.search_distance, next_state=MissionState.SEARCHING_LEFT)
+            
         elif self.state == MissionState.SEARCHING_LEFT:
-            self.do_search(direction='left', next_state=MissionState.ADVANCING_2)
-        elif self.state == MissionState.ADVANCING_2:
+            # Go 0 -> -6m (Left)
+            self.do_lateral_move(direction='left', distance=self.search_distance, next_state=MissionState.RETURNING_FROM_LEFT)
+            
+        elif self.state == MissionState.RETURNING_FROM_LEFT:
+            # Go -6m -> 0 (Right)
+            self.do_lateral_move(direction='right', distance=self.search_distance, next_state=MissionState.ADVANCING)
+            
+        elif self.state == MissionState.ADVANCING:
             self.do_advancing(next_state=MissionState.SEARCHING_RIGHT)
             
+        # --- CENTERING & FLYING ---
         elif self.state == MissionState.CENTERING_X:
             self.do_centering_x()
         elif self.state == MissionState.CENTERING_Y:
@@ -157,9 +170,10 @@ class CentralizedMissionNode(Node):
         elif self.state == MissionState.LANDING:
             self.do_landing()
 
-    def do_search(self, direction, next_state):
+    def do_lateral_move(self, direction, distance, next_state):
+        # Even when returning to center, if we see the gate, WE STOP!
         if self.is_target_visible():
-            self.get_logger().info('Target Locked! Switching to Centering.')
+            self.get_logger().info(f'Target Found while {self.state.name}! Centering...')
             self.stop_movement()
             self.state = MissionState.CENTERING_X
             self.move_start_time = None
@@ -169,12 +183,16 @@ class CentralizedMissionNode(Node):
             self.move_start_time = time.time()
         
         elapsed = time.time() - self.move_start_time
-        dist = elapsed * self.search_velocity
+        dist_traveled = elapsed * self.search_velocity
         
+        # Log progress
+        if int(elapsed * 10) % 20 == 0: 
+             self.get_logger().info(f'{self.state.name}: {dist_traveled:.1f}/{distance:.1f}m')
+
         vy = self.search_velocity if direction == 'right' else -self.search_velocity
         self.set_velocity(0.0, vy, 0.0)
         
-        if dist >= self.search_distance:
+        if dist_traveled >= distance:
             self.stop_movement()
             self.state = next_state
             self.move_start_time = None
@@ -187,12 +205,11 @@ class CentralizedMissionNode(Node):
             
         if self.move_start_time is None:
             self.move_start_time = time.time()
+            self.get_logger().info('Advancing Forward...')
             
         elapsed = time.time() - self.move_start_time
-        # Use search velocity for advancing too for consistency
         dist = elapsed * self.search_velocity 
         
-        # Move Forward (X)
         self.set_velocity(self.search_velocity, 0.0, 0.0)
         
         if dist >= self.advance_distance:
@@ -202,17 +219,17 @@ class CentralizedMissionNode(Node):
 
     def do_centering_x(self):
         if not self.is_target_visible():
-            self.get_logger().warn('Lost Lock. Resuming Search...')
-            self.state = MissionState.SEARCHING_RIGHT
+            self.get_logger().warn('Lost Lock. Returning to Search Pattern...')
+            # If lost, we default back to searching right to reset the loop
+            self.state = MissionState.SEARCHING_RIGHT 
             return
-            
+        
         error_x = self.latest_error.x 
         if abs(error_x) <= self.centering_threshold_x:
             self.stop_movement()
             self.state = MissionState.CENTERING_Y
             return
         
-        # P-Controller for X
         vy = np.clip(0.8 * error_x, -self.centering_velocity, self.centering_velocity)
         self.set_velocity(0.0, vy, 0.0)
 
@@ -225,7 +242,6 @@ class CentralizedMissionNode(Node):
         if abs(error_y) <= self.centering_threshold_y:
             self.stop_movement()
             
-            # Distance Calculation
             measured = self.latest_error.z
             if measured > 0.1:
                 self.calculated_fly_distance = measured * 1.5
@@ -237,7 +253,7 @@ class CentralizedMissionNode(Node):
             self.move_start_time = None
             return
 
-        vy = np.clip(0.5 * self.latest_error.x, -0.1, 0.1) # Keep X aligned
+        vy = np.clip(0.5 * self.latest_error.x, -0.1, 0.1)
         vz = -np.clip(0.8 * error_y, -self.centering_velocity, self.centering_velocity)
         self.set_velocity(0.0, vy, vz)
 
