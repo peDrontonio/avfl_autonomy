@@ -17,9 +17,10 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPo
 from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 
-from geometry_msgs.msg import PoseStamped, TwistStamped
+from geometry_msgs.msg import PoseStamped, TwistStamped, Twist, Vector3
 from geographic_msgs.msg import GeoPoseStamped
 from ardupilot_msgs.srv import ArmMotors, ModeSwitch
+from ardupilot_msgs.msg import GlobalPosition
 from drone_navigate.srv import Navigate
 
 import math
@@ -71,12 +72,14 @@ class NavigateServiceNode(Node):
 
         # --- Parameters ---
         self.declare_parameter('position_tolerance', 0.15)
+        self.declare_parameter('yaw_tolerance', 0.1)  # ~5.7 degrees
         self.declare_parameter('control_rate', 20.0)
         self.declare_parameter('max_velocity', 1.0)
         self.declare_parameter('kp_xy', 1.0)
         self.declare_parameter('kp_z', 1.0)
         
         self.position_tolerance = self.get_parameter('position_tolerance').value
+        self.yaw_tolerance = self.get_parameter('yaw_tolerance').value
         self.control_rate = self.get_parameter('control_rate').value
         self.max_velocity = self.get_parameter('max_velocity').value
         self.kp_xy = self.get_parameter('kp_xy').value
@@ -97,6 +100,7 @@ class NavigateServiceNode(Node):
         self.pose_received = False
         
         self.target_position = None
+        self.target_yaw = None  # Target yaw in radians (None = maintain current)
         self.nav_speed = 0.5
         self.is_navigating = False
         
@@ -122,6 +126,7 @@ class NavigateServiceNode(Node):
 
         # --- Publishers ---
         self.vel_pub = self.create_publisher(TwistStamped, '/ap/cmd_vel', 10)
+        self.gps_pose_pub = self.create_publisher(GlobalPosition, '/ap/cmd_gps_pose', 10)
 
         # --- Service Clients ---
         self.arm_client = self.create_client(
@@ -270,7 +275,7 @@ class NavigateServiceNode(Node):
         """Service callback for navigate requests."""
         self.get_logger().info(
             f"Navigate request: x={request.x}, y={request.y}, z={request.z}, "
-            f"speed={request.speed}, frame={request.frame_id}, auto_arm={request.auto_arm}"
+            f"yaw={request.yaw}, speed={request.speed}, frame={request.frame_id}, auto_arm={request.auto_arm}"
         )
 
         # Get current position
@@ -291,6 +296,8 @@ class NavigateServiceNode(Node):
         # Calculate target
         with self.state_lock:
             self.target_position = self.calculate_target_position(request, current_pos)
+            # Set target yaw (None if NaN/not specified, meaning maintain current heading)
+            self.target_yaw = None if math.isnan(request.yaw) else request.yaw
             self.nav_speed = min(request.speed if request.speed > 0 else 0.5, self.max_velocity)
             self.is_navigating = True
 
@@ -315,93 +322,127 @@ class NavigateServiceNode(Node):
             curr_z = self.current_pose.pose.position.z
             curr_yaw = self.current_yaw
             target = self.target_position.copy()
+            target_yaw = self.target_yaw
             speed = self.nav_speed
+            geopose = self.current_geopose
 
         # Calculate error in MAP frame
         err_x_map = target['x'] - curr_x
         err_y_map = target['y'] - curr_y
         err_z = target['z'] - curr_z
         distance = math.sqrt(err_x_map**2 + err_y_map**2 + err_z**2)
+        
+        # Calculate yaw error if target yaw is specified
+        yaw_error = 0.0
+        if target_yaw is not None:
+            # Normalize yaw error to [-pi, pi]
+            yaw_error = target_yaw - curr_yaw
+            while yaw_error > math.pi:
+                yaw_error -= 2 * math.pi
+            while yaw_error < -math.pi:
+                yaw_error += 2 * math.pi
 
         # Log progress
+        yaw_str = f"target_yaw={math.degrees(target_yaw):.1f}°, err={math.degrees(yaw_error):.1f}°" if target_yaw is not None else "no_yaw_control"
         self.get_logger().info(
             f"Nav: dist={distance:.2f}m, "
             f"pos=({curr_x:.2f}, {curr_y:.2f}, {curr_z:.2f}), "
-            f"target=({target['x']:.2f}, {target['y']:.2f}, {target['z']:.2f}), "
-            f"yaw={math.degrees(curr_yaw):.1f}°",
+            f"yaw={math.degrees(curr_yaw):.1f}°, {yaw_str}",
             throttle_duration_sec=1.0
         )
 
-        # Check if reached
-        if distance < self.position_tolerance:
-            self.get_logger().info(f"Target reached! Final pos: ({curr_x:.2f}, {curr_y:.2f}, {curr_z:.2f})")
-            # First set flags to stop the control loop from running again
+        # Check if both position AND yaw are reached
+        position_reached = distance < self.position_tolerance
+        yaw_reached = target_yaw is None or abs(yaw_error) < self.yaw_tolerance
+        
+        if position_reached and yaw_reached:
+            self.get_logger().info(
+                f"Target reached! Pos: ({curr_x:.2f}, {curr_y:.2f}, {curr_z:.2f}), "
+                f"Yaw: {math.degrees(curr_yaw):.1f}°"
+            )
+            
+            # Stop immediately by publishing zero velocity
+            stop_msg = TwistStamped()
+            stop_msg.header.stamp = self.get_clock().now().to_msg()
+            stop_msg.header.frame_id = "map"
+            stop_msg.twist.linear.x = 0.0
+            stop_msg.twist.linear.y = 0.0
+            stop_msg.twist.linear.z = 0.0
+            self.vel_pub.publish(stop_msg)
+            
+            # Then set flags to stop the control loop
             with self.state_lock:
                 self.target_position = None
+                self.target_yaw = None
                 self.is_navigating = False
-            # Then send stop commands
-            self.stop_drone()
+            
             return
 
-        # Calculate velocity in MAP frame (proportional control)
-        vel_x_map = self.kp_xy * err_x_map
-        vel_y_map = self.kp_xy * err_y_map
-        vel_z = self.kp_z * err_z
+        # Publish velocity commands only if position not reached
+        if not position_reached:
+            # Calculate velocity in MAP frame (proportional control)
+            vel_x_map = self.kp_xy * err_x_map
+            vel_y_map = self.kp_xy * err_y_map
+            vel_z = self.kp_z * err_z
 
-        # Limit XY speed in map frame
-        speed_xy = math.sqrt(vel_x_map**2 + vel_y_map**2)
-        if speed_xy > speed:
-            scale = speed / speed_xy
-            vel_x_map *= scale
-            vel_y_map *= scale
+            # Limit XY speed in map frame
+            speed_xy = math.sqrt(vel_x_map**2 + vel_y_map**2)
+            if speed_xy > speed:
+                scale = speed / speed_xy
+                vel_x_map *= scale
+                vel_y_map *= scale
 
-        # Limit Z speed
-        max_vz = speed * 0.5
-        if abs(vel_z) > max_vz:
-            vel_z = math.copysign(max_vz, vel_z)
+            # Limit Z speed
+            max_vz = speed * 0.5
+            if abs(vel_z) > max_vz:
+                vel_z = math.copysign(max_vz, vel_z)
 
-        # Transform velocity from MAP frame (ENU) to BODY frame
-        # MAP frame (ENU): X=East, Y=North, Z=Up
-        # BODY frame: X=Forward, Y=Left, Z=Up
-        # Yaw is measured from East (X+) towards North (Y+), counter-clockwise
-        # When yaw=0, drone points East. When yaw=90°, drone points North.
-        #
-        # Transformation from ENU to body:
-        # vel_forward = vel_east * cos(yaw) + vel_north * sin(yaw)
-        # vel_left = -vel_east * sin(yaw) + vel_north * cos(yaw)
-        cos_yaw = math.cos(curr_yaw)
-        sin_yaw = math.sin(curr_yaw)
-        vel_x_body = vel_x_map * cos_yaw + vel_y_map * sin_yaw   # forward
-        vel_y_body = -vel_x_map * sin_yaw + vel_y_map * cos_yaw  # left
-
-        # Publish velocity in body frame
-        msg = TwistStamped()
-        msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = "base_link"
-        msg.twist.linear.x = vel_x_body
-        msg.twist.linear.y = vel_y_body
-        msg.twist.linear.z = vel_z
-        self.vel_pub.publish(msg)
-
-    def stop_drone(self):
-        """Send zero velocity command multiple times to ensure drone stops."""
-        self.get_logger().info("Stopping drone...")
-        msg = TwistStamped()
-        msg.header.frame_id = "base_link"
-        msg.twist.linear.x = 0.0
-        msg.twist.linear.y = 0.0
-        msg.twist.linear.z = 0.0
-        msg.twist.angular.x = 0.0
-        msg.twist.angular.y = 0.0
-        msg.twist.angular.z = 0.0
-        
-        # Send stop command multiple times to ensure it's received
-        for _ in range(10):
+            # Publish velocity in MAP frame (ENU)
+            msg = TwistStamped()
             msg.header.stamp = self.get_clock().now().to_msg()
+            msg.header.frame_id = "map"
+            msg.twist.linear.x = vel_x_map  # East velocity
+            msg.twist.linear.y = vel_y_map  # North velocity
+            msg.twist.linear.z = vel_z      # Up velocity
             self.vel_pub.publish(msg)
-            time.sleep(0.05)
+        else:
+            # Position reached, send zero velocity
+            stop_msg = TwistStamped()
+            stop_msg.header.stamp = self.get_clock().now().to_msg()
+            stop_msg.header.frame_id = "map"
+            stop_msg.twist.linear.x = 0.0
+            stop_msg.twist.linear.y = 0.0
+            stop_msg.twist.linear.z = 0.0
+            self.vel_pub.publish(stop_msg)
         
-        self.get_logger().info("Drone stopped (zero velocity sent).")
+        # Publish yaw command if target yaw is specified
+        if target_yaw is not None and geopose is not None:
+            yaw_msg = GlobalPosition()
+            yaw_msg.header.stamp = self.get_clock().now().to_msg()
+            yaw_msg.header.frame_id = "map"
+            yaw_msg.coordinate_frame = GlobalPosition.FRAME_GLOBAL_REL_ALT
+            
+            # Ignore position and velocity, only control yaw
+            yaw_msg.type_mask = (
+                GlobalPosition.IGNORE_LATITUDE |
+                GlobalPosition.IGNORE_LONGITUDE |
+                GlobalPosition.IGNORE_ALTITUDE |
+                GlobalPosition.IGNORE_VX |
+                GlobalPosition.IGNORE_VY |
+                GlobalPosition.IGNORE_VZ |
+                GlobalPosition.IGNORE_AFX |
+                GlobalPosition.IGNORE_AFY |
+                GlobalPosition.IGNORE_AFZ |
+                GlobalPosition.IGNORE_YAW_RATE
+            )
+            
+            # Use current GPS position
+            yaw_msg.latitude = geopose.pose.position.latitude
+            yaw_msg.longitude = geopose.pose.position.longitude
+            yaw_msg.altitude = geopose.pose.position.altitude
+            yaw_msg.yaw = target_yaw
+            
+            self.gps_pose_pub.publish(yaw_msg)
 
 
 def main(args=None):
@@ -418,8 +459,6 @@ def main(args=None):
     except KeyboardInterrupt:
         node.get_logger().info("Shutting down...")
     finally:
-        if node.is_navigating:
-            node.stop_drone()
         executor.shutdown()
         node.destroy_node()
         if rclpy.ok():
