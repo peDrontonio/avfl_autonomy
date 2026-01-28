@@ -44,12 +44,40 @@
       <cast_shadows>true</cast_shadows>
       <pose>0 5 8 0 0 0</pose>
       <diffuse>1.0 1.0 1.0 1</diffuse>
-      <specular>0.5 0.5 0.5 1</specular>
+      <specular>0.6 0.6 0.6 1</specular>
       <attenuation>
         <range>100</range>
-        <constant>0.1</constant>
+        <constant>0.08</constant>
+        <linear>0.008</linear>
+        <quadratic>0.00008</quadratic>
+      </attenuation>
+    </light>
+
+    <!-- Additional light focused on the arch area -->
+    <light type="point" name="arch_light">
+      <cast_shadows>false</cast_shadows>
+      <pose>0 2 3 0 0 0</pose>
+      <diffuse>0.6 0.6 0.6 1</diffuse>
+      <specular>0.3 0.3 0.3 1</specular>
+      <attenuation>
+        <range>10</range>
+        <constant>0.5</constant>
+        <linear>0.02</linear>
+        <quadratic>0.002</quadratic>
+      </attenuation>
+    </light>
+
+    <!-- Additional light for lower markers -->
+    <light type="point" name="lower_marker_light">
+      <cast_shadows>false</cast_shadows>
+      <pose>0 2 1.5 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.3 0.3 0.3 1</specular>
+      <attenuation>
+        <range>8</range>
+        <constant>0.4</constant>
         <linear>0.01</linear>
-        <quadratic>0.0001</quadratic>
+        <quadratic>0.001</quadratic>
       </attenuation>
     </light>
 
@@ -200,7 +228,7 @@
     <!-- Quadrado flutuante a 1.5m - Lado 1 (Frente) -->
     <model name="floating_square_front">
       <static>true</static>
-      <pose>0.75 0 2 0 0 0</pose>
+      <pose>2.75 2.75 2 0 0 1.5707963267948966</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
@@ -227,7 +255,7 @@
     <!-- Quadrado flutuante a 1.5m - Lado 2 (Trás) -->
     <model name="floating_square_back">
       <static>true</static>
-      <pose>-0.75 0 2 0 0 0</pose>
+      <pose>2.75 1.25 2 0 0 1.5707963267948966</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
@@ -254,7 +282,7 @@
     <!-- Quadrado flutuante a 1.5m - Lado 3 (Esquerda) -->
     <model name="floating_square_left">
       <static>true</static>
-      <pose>0 0 2.75 0 1.57 0</pose>
+      <pose>2.75 2 2.75 0 1.57 1.5707963267948966</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
@@ -281,7 +309,7 @@
     <!-- Quadrado flutuante a 1.5m - Lado 4 (Direita) -->
     <model name="floating_square_right">
       <static>true</static>
-      <pose>0 0 1.25 0 1.57 0</pose>
+      <pose>2.75 2 1.25 0 1.57 1.5707963267948966</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
@@ -337,7 +365,7 @@
     <include>
       <uri>model://nelore</uri>
       <name>nelore</name>
-      <pose degrees="true">2 4 0.195 0 0 90</pose>
+      <pose degrees="true">0 0 0.195 0 0 0</pose>
     </include>
 
   </world>

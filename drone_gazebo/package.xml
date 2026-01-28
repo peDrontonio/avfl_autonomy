@@ -13,9 +13,13 @@
   <depend>geometry_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>cv_bridge</depend>
+  <depend>std_msgs</depend>
+  <depend>drone_navigate</depend>
   <exec_depend>std_srvs</exec_depend>
   <exec_depend>geographic_msgs</exec_depend>
   <exec_depend>ardupilot_msgs</exec_depend>
+  <exec_depend>python3-opencv</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

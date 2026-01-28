@@ -60,6 +60,9 @@ class DroneTrackerNode(Node):
         self.pose_pub_ = self.create_publisher(PoseStamped, 'drone_pose', 10)
         self.error_pub_ = self.create_publisher(Vector3, 'aruco_error', 10)
         
+        # Subscriber
+        # Topic: /camera/image (from Gazebo simulation)
+        # Type: Image
         self.subscription = self.create_subscription(
             Image, '/camera/image', self.image_callback, 10)
         

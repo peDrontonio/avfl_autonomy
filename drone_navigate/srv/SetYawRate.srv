@@ -1,0 +1,7 @@
+# SetYawRate.srv - Set yaw rate service
+# Request: Set continuous yaw rotation rate
+float32 yaw_rate  # Yaw rate in radians per second
+---
+# Response
+bool success
+string message
