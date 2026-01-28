@@ -55,6 +55,28 @@ install(PROGRAMS
   scripts/simple_mission.py
   scripts/view_camera.py
   scripts/aruco_detector_new.py
+  scripts/passar_arcos_mission.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+# Install camera node
+install(PROGRAMS
+  src/camera.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME camera_node
+)
+
+# Install mission1 wrapper
+install(PROGRAMS
+  src/run_mission1.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME master_mission1
+)
+
+# Install Python source modules
+install(DIRECTORY
+  src/passar_arcos
+  src/mission1
   DESTINATION lib/${PROJECT_NAME}
 )
 
