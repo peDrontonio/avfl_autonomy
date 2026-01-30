@@ -1,0 +1,111 @@
+# ============================================
+# AVFL AUTONOMY - JETSON NANO DOCKERFILE
+# For real drone operations (no Gazebo/SITL)
+# ============================================
+# STAGE 1: BUILDER
+# ============================================
+FROM ros:humble-ros-base-jammy AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+WORKDIR /build
+
+# 1. Install Build Dependencies
+RUN apt-get update && apt-get install -y \
+    git build-essential cmake python3-colcon-common-extensions \
+    && rm -rf /var/lib/apt/lists/*
+
+# 2. Build Micro-XRCE-DDS-Agent (for ArduPilot DDS communication)
+# - git clone --depth 1: Downloads only the latest code (no history) -> Much faster download
+# - make -j$(nproc): Uses ALL Jetson CPU cores -> Much faster compile
+RUN git clone --depth 1 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git \
+    && cd Micro-XRCE-DDS-Agent \
+    && mkdir build && cd build \
+    && cmake .. \
+    && make -j$(nproc) \
+    && make install
+
+# 3. Build ardupilot_msgs (required for drone_navigate package)
+# ardupilot_msgs is located inside the main ArduPilot repository
+WORKDIR /build/ros2_ws/src
+RUN git clone --depth 1 --filter=blob:none --sparse https://github.com/ArduPilot/ardupilot.git \
+    && cd ardupilot \
+    && git sparse-checkout set Tools/ros2/ardupilot_msgs \
+    && mv Tools/ros2/ardupilot_msgs ../ardupilot_msgs \
+    && cd .. \
+    && rm -rf ardupilot
+
+WORKDIR /build/ros2_ws
+RUN . /opt/ros/humble/setup.sh \
+    && colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release --parallel-workers $(nproc)
+
+# ============================================
+# STAGE 2: RUNTIME
+# ============================================
+FROM ros:humble-ros-base-jammy
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Etc/UTC
+
+# 1. Install MAVROS & Python Dependencies for real drone communication
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ros-humble-mavros \
+    ros-humble-mavros-extras \
+    ros-humble-tf2-ros \
+    ros-humble-tf2-geometry-msgs \
+    ros-humble-cv-bridge \
+    ros-humble-image-transport \
+    python3-pip \
+    python3-numpy \
+    python3-opencv \
+    libgeographic-dev \
+    geographiclib-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+# 2. Install Python MAVLink tools for drone communication
+RUN pip3 install --no-cache-dir \
+    pymavlink \
+    MAVProxy \
+    pyserial
+
+# 3. Initialize MAVROS GeographicLib Datasets (required for GPS operations)
+RUN wget https://raw.githubusercontent.com/mavlink/mavros/master/mavros/scripts/install_geographiclib_datasets.sh \
+    && chmod +x install_geographiclib_datasets.sh \
+    && ./install_geographiclib_datasets.sh \
+    && rm install_geographiclib_datasets.sh
+
+# 4. Copy Artifacts from Builder
+COPY --from=builder /usr/local/bin/MicroXRCEAgent /usr/local/bin/MicroXRCEAgent
+COPY --from=builder /usr/local/lib/libmicroxrcedds* /usr/local/lib/
+COPY --from=builder /usr/local/lib/libmicrocdr* /usr/local/lib/
+COPY --from=builder /usr/local/lib/libfastcdr* /usr/local/lib/
+COPY --from=builder /usr/local/lib/libfastdds* /usr/local/lib/
+COPY --from=builder /usr/local/lib/libfastrtps* /usr/local/lib/
+COPY --from=builder /build/ros2_ws/install /opt/ros_custom_ws/install
+
+# 5. Update library cache
+RUN ldconfig
+
+# 6. Environment Setup
+WORKDIR /root
+RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc \
+    && echo "source /opt/ros_custom_ws/install/setup.bash" >> /root/.bashrc \
+    && echo "# Source drone_navigate workspace if available" >> /root/.bashrc \
+    && echo "if [ -f /root/avfl_ws/install/setup.bash ]; then" >> /root/.bashrc \
+    && echo "    source /root/avfl_ws/install/setup.bash" >> /root/.bashrc \
+    && echo "fi" >> /root/.bashrc
+
+# 7. Create workspace directory for drone_navigate
+RUN mkdir -p /root/avfl_ws/src
+
+# 8. Entrypoint
+RUN echo '#!/bin/bash\n\
+set -e\n\
+source /opt/ros/humble/setup.bash\n\
+source /opt/ros_custom_ws/install/setup.bash\n\
+if [ -f /root/avfl_ws/install/setup.bash ]; then\n\
+    source /root/avfl_ws/install/setup.bash\n\
+fi\n\
+exec "$@"' > /entrypoint.sh && chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["bash"]
