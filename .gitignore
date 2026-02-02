@@ -1,8 +1,8 @@
-# Ignorar arquivos compilados de Python
+
 __pycache__/
 *.pyc
 
-# Ignorar pastas de build do ROS/Gazebo (Boa prática)
+
 build/
 devel/
 logs/
