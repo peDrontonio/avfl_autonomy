@@ -52,13 +52,31 @@ if [ "$1" == "dds" ]; then
     exit 0
 fi
 
+# UDP Agent mode - runs micro_ros_agent for UDP communication
+if [ "$1" == "udp" ]; then
+    UDP_PORT="${2:-2019}"
+    
+    echo "=========================================="
+    echo "Starting micro_ros_agent UDP on port ${UDP_PORT}"
+    echo "=========================================="
+    
+    docker run -it --rm \
+        --name ${CONTAINER_NAME}-udp \
+        --net=host \
+        --privileged \
+        ${IMAGE_NAME}:${IMAGE_TAG} \
+        bash -c "source /opt/ros/humble/setup.bash && ros2 run micro_ros_agent micro_ros_agent udp4 -p ${UDP_PORT}"
+    exit 0
+fi
+
 echo "=========================================="
 echo "Starting container: ${CONTAINER_NAME}"
 echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}"
 echo "Mounting workspace: ${WORKSPACE_DIR}"
 echo ""
 echo "Usage tips:"
-echo "  - Start DDS Agent: ./run_jetson.sh dds [serial_port] [baud_rate]"
+echo "  - Start DDS Agent (serial): ./run_jetson.sh dds [serial_port] [baud_rate]"
+echo "  - Start micro_ros_agent (UDP): ./run_jetson.sh udp [port]"
 echo "  - Attach to container: ./run_jetson.sh exec"
 echo "=========================================="
 

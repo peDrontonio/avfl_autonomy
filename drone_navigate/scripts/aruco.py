@@ -81,7 +81,7 @@ class DroneTrackerNode(Node):
         # --- ATUALIZAÇÃO PARA DICIONÁRIO 4X4 ---
         # Usando DICT_4X4_50 (padrão comum). Se seus IDs forem > 49, use DICT_4X4_250.
         self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
-        self.aruco_params = cv2.aruco.DetectorParameters()
+        self.aruco_params = cv2.aruco.DetectorParameters_create()
         self.detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
         
         self.standard_obj_points = get_marker_corners(DEFAULT_MARKER_SIZE)
