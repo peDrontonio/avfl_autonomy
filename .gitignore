@@ -1,0 +1,8 @@
+.pyc*
+build/
+log/
+__pycache__/
+.DS_Store
+.vscode/
+env/
+.pytest_cache/
