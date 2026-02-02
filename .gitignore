@@ -1,8 +1,14 @@
-.pyc*
-build/
-log/
+# Ignorar arquivos compilados de Python
 __pycache__/
-.DS_Store
+*.pyc
+
+# Ignorar pastas de build do ROS/Gazebo (Boa prática)
+build/
+devel/
+logs/
+.catkin_workspace
+
+
 .vscode/
 env/
-.pytest_cache/
+
