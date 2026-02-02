@@ -13,9 +13,13 @@ from geometry_msgs.msg import Point, Pose2D
 from mavros_msgs.srv import CommandBool
 from std_srvs.srv import Trigger
 from std_srvs.srv import SetBool
+from ardupilot_msgs.srv import ModeSwitch
 from tools_mission1 import Tools
 import colorful as cf
 from states import *
+
+# ArduPilot flight modes
+COPTER_MODE_LAND = 9
 
 class MasterMission1(Tools):
     def __init__(self) -> None:
@@ -25,111 +29,163 @@ class MasterMission1(Tools):
         self.setClients()
         self.setServer()
         
+        # Mission parameters
+        self.search_distance = 6.0  # meters to search in each direction
+        self.search_speed = 0.3     # m/s for search movement
+        self.advance_distance = 3.0  # meters to fly through gate
+        self.advance_speed = 0.3    # m/s for advancing
+        
     def update(self):
         """
-        State machine logic for Mission 1.
+        State machine logic for Mission 1 - Gate Passing with ArUco Detection.
+        
+        States:
+        - Searching: Look for the gate by moving laterally
+        - Aligning: Partial markers visible, move to see all 4
+        - Centering: All markers visible, center on gate
+        - Advancing: Fly through the gate
+        - Landing: Land the drone
         """
         
         if self.fsm == 'Searching':
-            print(cf.blue("State - Searching"))
-            print(cf.yellow("Searching for the gate"))
-            self.navigateInterrupted(y=-5, frame_id='body', speed=0.2, auto_arm=False)
-            time.sleep(2)
-            print(cf.yellow("Searching complete"))
-            # Add event and transition to next state
-            self.fsm.add('markers_detected')
-            self.fsm.updateEvent()
+            print(cf.blue("=" * 50))
+            print(cf.blue("State - SEARCHING"))
+            print(cf.blue("=" * 50))
+            print(cf.yellow("Looking for gate markers..."))
+            
+            # Check if we already see markers
+            if self.check_markers_detected():
+                print(cf.green("Markers detected! Transitioning to Aligning..."))
+                self.fsm.add('markers_detected')
+                self.fsm.updateEvent()
+                return
+            
+            # Search for the gate
+            found = self.searchForGate(
+                search_distance=self.search_distance,
+                search_speed=self.search_speed
+            )
+            
+            if found or self.check_markers_detected():
+                print(cf.green("Gate found!"))
+                self.fsm.add('markers_detected')
+                self.fsm.updateEvent()
+            else:
+                print(cf.red("Gate not found, continuing search..."))
+                time.sleep(1)
             
         elif self.fsm == 'Aligning':
-            print(cf.blue("State - Aligning"))
-            print(cf.yellow("Aligning with markers"))
-            time.sleep(1)
+            print(cf.blue("=" * 50))
+            print(cf.blue("State - ALIGNING"))
+            print(cf.blue("=" * 50))
+            print(cf.yellow(f"Markers visible: {self.marker_count}/4"))
             
-            print(cf.yellow("Aligning complete"))
-            # Add event and transition to next state
-            self.fsm.add('all_markers_visible')
-            self.fsm.updateEvent()
+            # Check if all markers are already visible
+            if self.check_all_markers_visible():
+                print(cf.green("All markers visible! Transitioning to Centering..."))
+                self.fsm.add('all_markers_visible')
+                self.fsm.updateEvent()
+                return
+            
+            # Check if we lost all markers
+            if self.check_markers_lost():
+                print(cf.red("Lost all markers! Returning to Searching..."))
+                self.fsm.add('markers_lost')
+                self.fsm.updateEvent()
+                return
+            
+            # Try to align to see all markers
+            aligned = self.alignToGate(timeout=20.0)
+            
+            if aligned or self.check_all_markers_visible():
+                print(cf.green("Alignment complete!"))
+                self.fsm.add('all_markers_visible')
+                self.fsm.updateEvent()
+            elif self.check_markers_lost():
+                print(cf.red("Lost markers during alignment"))
+                self.fsm.add('markers_lost')
+                self.fsm.updateEvent()
 
         elif self.fsm == 'Centering':
-            print(cf.blue("State - Centering"))
-            print(cf.yellow("Centering on gate"))
-            time.sleep(1)
-            print(cf.yellow("Centering complete"))
-            # Add event and transition to next state
-            self.fsm.add('centered')
-            self.fsm.updateEvent()
+            print(cf.blue("=" * 50))
+            print(cf.blue("State - CENTERING"))
+            print(cf.blue("=" * 50))
+            print(cf.yellow(f"Gate error: X={self.gate_error.x:.3f}, Y={self.gate_error.y:.3f}"))
+            
+            # Check if we lost markers
+            if self.marker_count < 3:
+                if self.check_markers_lost():
+                    print(cf.red("Lost all markers! Returning to Searching..."))
+                    self.fsm.add('all_markers_lost')
+                    self.fsm.updateEvent()
+                    return
+                else:
+                    print(cf.orange("Lost some markers, returning to Aligning..."))
+                    self.fsm.add('markers_lost')
+                    self.fsm.updateEvent()
+                    return
+            
+            # Check if already centered
+            if self.check_centered():
+                print(cf.green("Centered! Transitioning to Advancing..."))
+                self.fsm.add('centered')
+                self.fsm.updateEvent()
+                return
+            
+            # Center on the gate
+            centered = self.centerOnGate(timeout=30.0)
+            
+            if centered or self.check_centered():
+                print(cf.green("Centering complete!"))
+                self.fsm.add('centered')
+                self.fsm.updateEvent()
+            elif self.check_markers_lost():
+                print(cf.red("Lost markers during centering"))
+                self.fsm.add('markers_lost')
+                self.fsm.updateEvent()
         
         elif self.fsm == 'Advancing':
-            print(cf.blue("State - Advancing"))
-            print(cf.yellow("Moving forward through gate"))
+            print(cf.blue("=" * 50))
+            print(cf.blue("State - ADVANCING"))
+            print(cf.blue("=" * 50))
+            print(cf.yellow("Flying through the gate..."))
             
-            # Wait for navigate service
-            self.get_logger().info("Waiting for navigate service...")
-            if not self.navigate.wait_for_service(timeout_sec=10.0):
-                self.get_logger().error("Navigate service not available after 10s")
-            else:
-                # Navigate forward
-                req = Navigate.Request()
-                req.x = 2.0
-                req.y = 0.0
-                req.z = 0.0
-                req.yaw = 0.0
-                req.yaw_rate = 0.0
-                req.speed = 0.2
-                req.frame_id = 'body'
-                req.auto_arm = False
-                
-                self.get_logger().info("Calling navigate service...")
-                future = self.navigate.call_async(req)
-                
-                # Wait for response with timeout
-                start_time = time.time()
-                while not future.done():
-                    if time.time() - start_time > 15.0:
-                        self.get_logger().error("Navigate timeout")
-                        break
-                    time.sleep(0.1)
-                
-                if future.done():
-                    res = future.result()
-                    self.get_logger().info(f"Navigate result: {res.success}, {res.message}")
+            # Check if still centered before advancing
+            if not self.check_centered() and self.marker_count >= 3:
+                print(cf.orange("Lost centering, re-centering..."))
+                self.fsm.add('lost_alignment')
+                self.fsm.updateEvent()
+                return
             
-            time.sleep(2)
-            print(cf.yellow("Advancing complete"))
-            # Add event and transition to landing
+            # Advance through the gate
+            success = self.advanceThroughGate(
+                advance_distance=self.advance_distance,
+                advance_speed=self.advance_speed
+            )
+            
+            print(cf.green("Gate crossed!"))
             self.fsm.add('crossed')
             self.fsm.updateEvent()
             
         elif self.fsm == 'Landing':
-            print(cf.blue("State - Landing"))
+            print(cf.blue("=" * 50))
+            print(cf.blue("State - LANDING"))
+            print(cf.blue("=" * 50))
+            print(cf.yellow("Landing the drone..."))
             
-            # Wait for land service
-            self.get_logger().info("Waiting for land service...")
-            if not self.land.wait_for_service(timeout_sec=10.0):
-                self.get_logger().error("Land service not available after 10s")
-            else:
-                # Land
-                self.get_logger().info("Calling land service...")
-                land_future = self.land.call_async(Trigger.Request())
-                
-                # Wait for response with timeout
-                start_time = time.time()
-                while not land_future.done():
-                    if time.time() - start_time > 15.0:
-                        self.get_logger().error("Land service timeout")
-                        break
-                    time.sleep(0.1)
-                
-                if land_future.done():
-                    res = land_future.result()
-                    self.get_logger().info(f"Land result: {res.success}, {res.message}")
-                    
-            print(cf.yellow("Landing complete"))
-            time.sleep(1)
-            # Add event to finish FSM
+            # Land the drone
+            self.landDrone()
+            
+            print(cf.green("Landing complete!"))
+            time.sleep(2)
+            
+            # Finish FSM
             self.fsm.add('landed')
             self.fsm.updateEvent()
             self.mission_running = False
+            print(cf.green("=" * 50))
+            print(cf.green("MISSION 1 COMPLETED!"))
+            print(cf.green("=" * 50))
 
 
 

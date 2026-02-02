@@ -54,8 +54,6 @@ install(PROGRAMS
   scripts/generate_aruco_markers.py
   scripts/simple_mission.py
   scripts/view_camera.py
-  scripts/aruco_detector_new.py
-  scripts/passar_arcos_mission.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -66,18 +64,27 @@ install(PROGRAMS
   RENAME camera_node
 )
 
-# Install mission1 wrapper
+# Install mission1 master node
 install(PROGRAMS
   src/run_mission1.py
   DESTINATION lib/${PROJECT_NAME}
   RENAME master_mission1
 )
 
-# Install Python source modules
+# Install mission1 aruco detector node
+install(PROGRAMS
+  src/run_aruco_detector.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME aruco_detector
+)
+
+# Install Python source modules (mission1 package)
 install(DIRECTORY
-  src/passar_arcos
   src/mission1
   DESTINATION lib/${PROJECT_NAME}
+  FILES_MATCHING 
+  PATTERN "*.py"
+  PATTERN "__pycache__" EXCLUDE
 )
 
 ament_package()

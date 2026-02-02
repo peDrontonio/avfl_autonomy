@@ -333,32 +333,32 @@
       </link>
     </model>
 
-    <!-- Marcador ArUco 0 - Ponta Frontal (Frente) -->
+    <!-- Marcador ArUco 0 - Front Bottom Corner -->
     <include>
       <uri>model://aruco_marker_0</uri>
       <name>aruco_marker_0</name>
-      <pose>0.75 0.05 1.25 1.57079 0 0</pose>
+      <pose>2.65 2.75 1.25 0 1.57079 3.14159</pose>
     </include>
 
-    <!-- Marcador ArUco 1 - Ponta Traseira (Trás) -->
+    <!-- Marcador ArUco 1 - Back Bottom Corner -->
     <include>
       <uri>model://aruco_marker_1</uri>
       <name>aruco_marker_1</name>
-      <pose>-0.75 0.05 1.25 1.57079 0 0</pose>
+      <pose>2.65 1.25 1.25 0 1.57079 3.14159</pose>
     </include>
 
-    <!-- Marcador ArUco 2 - Ponta Inferior -->
+    <!-- Marcador ArUco 2 - Front Top Corner -->
     <include>
       <uri>model://aruco_marker_2</uri>
       <name>aruco_marker_2</name>
-      <pose>0.75 0.05 2.75 1.57079 0 0</pose>
+      <pose>2.65 2.75 2.75 0 1.57079 3.14159</pose>
     </include>
 
-    <!-- Marcador ArUco 3 - Ponta Superior -->
+    <!-- Marcador ArUco 3 - Back Top Corner -->
     <include>
       <uri>model://aruco_marker_3</uri>
       <name>aruco_marker_3</name>
-      <pose>-0.75 0.05 2.75 1.57079 0 0</pose>
+      <pose>2.65 1.25 2.75 0 1.57079 3.14159</pose>
     </include>
 
     <!-- Nelore Drone -->
