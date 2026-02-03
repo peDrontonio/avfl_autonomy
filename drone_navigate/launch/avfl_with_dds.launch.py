@@ -21,45 +21,43 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
-#     # Declare launch arguments
-#     transport_arg = DeclareLaunchArgument(
-#         'transport',
-#         default_value='udp4',
-#         description='Transport type: udp4, serial'
-#     )
+    # Declare launch arguments
+    serial_port_arg = DeclareLaunchArgument(
+        'serial_port',
+        default_value='/dev/ttyTHS1',
+        description='Serial port for micro_ros_agent communication'
+    )
     
-#     port_arg = DeclareLaunchArgument(
-#         'port',
-#         default_value='2019',
-#         description='UDP port (for udp4 transport) or serial port (for serial transport)'
-#     )
-    
-#     baud_rate_arg = DeclareLaunchArgument(
-#         'baud_rate',
-#         default_value='115200',
-#         description='Baud rate for serial communication (only used with serial transport)'
-#     )
+    baud_rate_arg = DeclareLaunchArgument(
+        'baud_rate',
+        default_value='921600',
+        description='Baud rate for serial communication'
+    )
 
-    # return LaunchDescription([
-    #     transport_arg,
-    #     port_arg,
-    #     baud_rate_arg,
+    return LaunchDescription([
+        serial_port_arg,
+        baud_rate_arg,
         
         LogInfo(msg='=========================================='),
         LogInfo(msg='  AVFL - Complete Real Drone System'),
         LogInfo(msg='  Starting DDS Agent + Navigation + ArUco'),
         LogInfo(msg='=========================================='),
         
-        # # ====================================
-        # # DDS AGENT - UDP MODE
-        # # ====================================
-        # LogInfo(msg='Starting MicroXRCE DDS Agent (UDP)...'),
-        # ExecuteProcess(
-        #     cmd=['MicroXRCEAgent', 'udp4', '-p', LaunchConfiguration('port')],
-        #     name='micro_xrce_dds_agent',
-        #     output='screen',
-        #     emulate_tty=True
-        # ),
+        # ====================================
+        # MICRO ROS DDS AGENT - SERIAL MODE
+        # ====================================
+        LogInfo(msg='Starting Micro-ROS DDS Agent (Serial)...'),
+        ExecuteProcess(
+            cmd=[
+                'ros2', 'run', 'micro_ros_agent', 'micro_ros_agent',
+                'serial', '--dev', LaunchConfiguration('serial_port'),
+                '-b', LaunchConfiguration('baud_rate'),
+                '-v6'
+            ],
+            name='micro_ros_agent',
+            output='screen',
+            emulate_tty=True
+        ),
         
         # ====================================
         # NAVIGATION SERVICES
@@ -97,4 +95,4 @@ def generate_launch_description():
         LogInfo(msg='  All systems launched successfully!'),
         LogInfo(msg='  Ready for real drone operation.'),
         LogInfo(msg='=========================================='),
-    ])
+        ])
