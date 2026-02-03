@@ -50,13 +50,6 @@ install(PROGRAMS
   RENAME set_yaw_rate_service
 )
 
-# Install ArUco detector script
-install(PROGRAMS
-  scripts/aruco.py
-  DESTINATION lib/${PROJECT_NAME}
-  RENAME aruco
-)
-
 # Install launch files
 install(DIRECTORY
   launch

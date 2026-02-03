@@ -2,13 +2,24 @@
 """
 States for the ArUco Gate Passing Mission
 
-Simplified State Machine Flow:
-1. Searching: No markers visible - search mode 
-2. Aligning: 1-3 markers visible - move to bring all markers into view
-3. Centering: 4 markers visible - center on gate
-4. Advancing: Centered - move forward through gate
-5. Landing: Crossed gate - land
+State Machine Flow:
+1. Searching: No/1 marker visible - search mode 
+2. PartialCentering: 2-3 markers visible - center on partial, adjust to find rest
+3. Aligning: After partial centering, adjust Y/Z based on marker layout
+4. Centering: 4 markers visible - center on gate
+5. Advancing: Centered - move forward through gate
+6. Landing: Crossed gate - land
 
+Gate Layout (ArUco markers 0-3):
+    2 --- 3
+    |     |
+    0 --- 1
+
+Alignment Logic (when 2 markers detected):
+- {0, 1} (bottom pair) -> Move UP
+- {2, 3} (top pair) -> Move DOWN
+- {1, 3} (right pair) -> Move LEFT
+- {0, 2} (left pair) -> Move RIGHT
 """
 
 from FSM import State
@@ -16,33 +27,64 @@ from FSM import State
 
 class Searching(State):
     """
-    State: SEARCHING (0 markers visible)
+    State: SEARCHING (0-1 markers visible)
     
-    No markers detected - drone searches by moving/rotating.
+    No/insufficient markers detected - drone searches by moving laterally.
+    Requires at least 2 markers to transition.
     
     Events:
-        - 'markers_detected': At least one marker found -> Aligning
+        - 'partial_detected': 2-3 markers found -> PartialCentering
+        - 'all_markers_visible': All 4 markers found -> Centering
     """
     
     def __init__(self, name: str = "") -> None:
         super().__init__(name)
 
     def event(self):
-        if self.tail('markers_detected'):
-            return Aligning
+        if self.tail('all_markers_visible'):
+            return Centering
+        if self.tail('partial_detected'):
+            return PartialCentering
         return Searching
+
+
+class PartialCentering(State):
+    """
+    State: PARTIAL_CENTERING (2-3 markers visible)
+    
+    Partial view of gate - center on visible markers first,
+    then transition to Aligning to find remaining markers.
+    
+    Events:
+        - 'partial_centered': Centered on partial markers -> Aligning
+        - 'all_markers_visible': All 4 markers detected -> Centering
+        - 'markers_lost': Lost markers (< 2) -> Searching
+    """
+    
+    def __init__(self, name: str = "") -> None:
+        super().__init__(name)
+
+    def event(self):
+        if self.tail('all_markers_visible'):
+            return Centering
+        if self.tail('partial_centered'):
+            return Aligning
+        if self.tail('markers_lost'):
+            return Searching
+        return PartialCentering
 
 
 class Aligning(State):
     """
-    State: ALIGNING (1-3 markers visible)
+    State: ALIGNING (2-3 markers visible, partially centered)
     
-    Partial view of gate - move to bring all 4 markers into view.
-    Movement direction is inferred from which markers are visible.
+    After partial centering - adjust Y or Z based on which markers
+    are visible to bring all 4 markers into view.
     
     Events:
         - 'all_markers_visible': All 4 markers detected -> Centering
         - 'markers_lost': Lost all markers -> Searching
+        - 'partial_lost': Lost some but still have 2+ -> PartialCentering
     """
     
     def __init__(self, name: str = "") -> None:
@@ -53,6 +95,8 @@ class Aligning(State):
             return Centering
         if self.tail('markers_lost'):
             return Searching
+        if self.tail('partial_lost'):
+            return PartialCentering
         return Aligning
 
 
@@ -65,7 +109,7 @@ class Centering(State):
     
     Events:
         - 'centered': Drone is aligned with gate center -> Advancing
-        - 'markers_lost': Lost some markers -> Aligning
+        - 'markers_lost': Lost some markers -> PartialCentering
         - 'all_markers_lost': Lost all markers -> Searching
     """
     
@@ -76,7 +120,7 @@ class Centering(State):
         if self.tail('centered'):
             return Advancing
         if self.tail('markers_lost'):
-            return Aligning
+            return PartialCentering
         if self.tail('all_markers_lost'):
             return Searching
         return Centering
