@@ -171,6 +171,8 @@ RUN apt-get update && apt-get install -y \
         monotonic \
     && rm -rf /var/lib/apt/lists/*
 
+RUN pip3 install colorful 
+
 # Build ArduPilot SITL for Copter
 RUN ./waf configure --board sitl \
     && ./waf copter
