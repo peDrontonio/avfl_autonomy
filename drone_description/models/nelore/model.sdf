@@ -6,6 +6,7 @@
       <name>iris</name>
     </include>
 
+    <!-- Front Camera (forward-facing) -->
     <link name="camera_link">
       <pose>0.1 0 0 0 0 0</pose>
       <inertial>
@@ -40,6 +41,58 @@
     <joint name="camera_joint" type="fixed">
       <parent>base_link</parent>
       <child>camera_link</child>
+    </joint>
+
+    <!-- Bottom Camera (downward-facing for mission 2) -->
+    <link name="bottom_camera_link">
+      <!-- Position: center of drone (x=0, y=0), slightly below body (z=-0.08) -->
+      <!-- Rotation: 90 degrees around Y-axis to point downward (pitch = 1.5708 rad) -->
+      <pose>0 0 -0.08 0 1.5708 0</pose>
+      <inertial>
+        <mass>0.015</mass>
+        <inertia>
+          <ixx>0.00001</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.00001</iyy>
+          <iyz>0</iyz>
+          <izz>0.00001</izz>
+        </inertia>
+      </inertial>
+      <visual name="bottom_camera_visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.02 0.03 0.02</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1</ambient>
+          <diffuse>0.2 0.2 0.2</diffuse>
+          <specular>0.5 0.5 0.5 1</specular>
+        </material>
+      </visual>
+      <sensor name="bottom_camera" type="camera">
+        <camera>
+          <horizontal_fov>1.047</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>100</far>
+          </clip>
+        </camera>
+        <always_on>1</always_on>
+        <update_rate>30</update_rate>
+        <visualize>true</visualize>
+        <topic>/bottom_camera</topic>
+      </sensor>
+    </link>
+    <joint name="bottom_camera_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>bottom_camera_link</child>
     </joint>
 
     <!-- <include merge="true">
