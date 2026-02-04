@@ -17,13 +17,14 @@ find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 
-# Generate service interfaces
+# Generate service interfaces and messages
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/Navigate.srv"
   "srv/GetTelemetry.srv"
   "srv/NavigateGlobal.srv"
   "srv/SetYawRate.srv"
-  DEPENDENCIES geometry_msgs ardupilot_msgs
+  "msg/BaseDetection.msg"
+  DEPENDENCIES geometry_msgs ardupilot_msgs std_msgs
 )
 
 install(PROGRAMS

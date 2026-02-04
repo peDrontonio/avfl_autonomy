@@ -49,6 +49,7 @@ RUN wget https://raw.githubusercontent.com/osrf/osrf-rosdep/master/gz/00-gazebo.
 RUN apt-get update && apt-get install -y \
     ros-humble-image-transport \
     ros-humble-image-transport-plugins \
+    ros-humble-cv-bridge \
     ros-humble-xacro \
     ros-humble-vision-msgs \
     ros-humble-gps-msgs \
@@ -98,7 +99,11 @@ RUN pip3 install --no-cache-dir \
     empy==3.3.4 \
     pyserial \
     dronekit \
-    dronekit-sitl
+    dronekit-sitl \
+    colorful \
+    ultralytics \
+    torch \
+    torchvision
 
 # ============================================
 # Install MicroXRCEDDSGen (required for ardupilot_sitl)
@@ -169,9 +174,8 @@ RUN apt-get update && apt-get install -y \
         requests \
         scipy \
         monotonic \
+        colorful \
     && rm -rf /var/lib/apt/lists/*
-
-RUN pip3 install colorful 
 
 # Build ArduPilot SITL for Copter
 RUN ./waf configure --board sitl \
