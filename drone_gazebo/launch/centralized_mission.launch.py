@@ -22,7 +22,7 @@ def generate_launch_description():
 
         Node(
             package='drone_gazebo',
-            executable='aruco_detector_new.py',
+            executable='aruco.py',
             name='drone_tracker',
             output='screen',
             emulate_tty=True
