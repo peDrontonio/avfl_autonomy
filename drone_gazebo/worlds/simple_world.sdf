@@ -361,6 +361,13 @@
       <pose>2.65 1.25 2.75 0 1.57079 3.14159</pose>
     </include>
 
+    <!-- Helipad Landing Base (outside walls) -->
+    <include>
+      <uri>model://h_base</uri>
+      <name>helipad</name>
+      <pose>15 0 0.005 0 0 0</pose>
+    </include>
+
     <!-- Nelore Drone -->
     <include>
       <uri>model://nelore</uri>

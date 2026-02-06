@@ -67,6 +67,16 @@ class YOLOBaseDetector(Node):
         
         # Copy image for visualization
         output_frame = frame.copy()
+        
+        # Draw center crosshair
+        center_x = self.image_width // 2
+        center_y = self.image_height // 2
+        crosshair_size = 20
+        cv2.line(output_frame, (center_x - crosshair_size, center_y), 
+                 (center_x + crosshair_size, center_y), (255, 0, 0), 2)
+        cv2.line(output_frame, (center_x, center_y - crosshair_size), 
+                 (center_x, center_y + crosshair_size), (255, 0, 0), 2)
+        cv2.circle(output_frame, (center_x, center_y), 5, (255, 0, 0), 2)
 
         if len(detections) > 0:
             best_detection = None
@@ -103,18 +113,43 @@ class YOLOBaseDetector(Node):
                     self.detection_history.pop(0)
                 
                 # === Desenha bounding box e centro ===
-                cv2.rectangle(output_frame, (int(xmin), int(ymin)), (int(xmax), int(ymax)), (0, 255, 0), 2)
-                cv2.circle(output_frame, (x_center, y_center), 4, (0, 0, 255), -1)
+                cv2.rectangle(output_frame, (int(xmin), int(ymin)), (int(xmax), int(ymax)), (0, 255, 0), 3)
+                cv2.circle(output_frame, (x_center, y_center), 6, (0, 0, 255), -1)
+                
+                # Draw line from detection center to image center
+                cv2.line(output_frame, (x_center, y_center), (center_x, center_y), (255, 255, 0), 2)
+                
+                # Labels
                 label = f"Base: {confidence:.2f}"
                 cv2.putText(output_frame, label, (int(xmin), int(ymin) - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                
+                # Offset from center
+                offset_x = x_center - center_x
+                offset_y = y_center - center_y
+                offset_text = f"Offset: X={offset_x:+d} Y={offset_y:+d}"
+                cv2.putText(output_frame, offset_text, (int(xmin), int(ymin) - 35),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+                
+                # Status text at top
+                status_text = f"DETECTED | Consecutive: {self.consecutive_detections}"
+                cv2.putText(output_frame, status_text, (10, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
             else:
                 self.consecutive_detections = 0
                 self.detection_history = []
+                # Status text at top
+                status_text = "NO BASE DETECTED"
+                cv2.putText(output_frame, status_text, (10, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
                 self.get_logger().warn("Base not detected in current frame", throttle_duration_sec=5.0)
         else:
             self.consecutive_detections = 0
             self.detection_history = []
+            # Status text at top
+            status_text = "NO OBJECTS DETECTED"
+            cv2.putText(output_frame, status_text, (10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
             self.get_logger().warn("No objects detected in current frame", throttle_duration_sec=5.0)
 
         # === Publica imagem anotada ===

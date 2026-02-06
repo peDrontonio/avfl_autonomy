@@ -14,12 +14,13 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPo
 from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, TransformStamped
 from geographic_msgs.msg import GeoPoseStamped
 from ardupilot_msgs.msg import GlobalPosition
 from ardupilot_msgs.srv import ArmMotors, ModeSwitch
 from drone_navigate.srv import NavigateGlobal
 
+import tf2_ros
 import math
 import time
 import threading
@@ -147,9 +148,13 @@ class NavigateGlobalServiceNode(Node):
         self.target_yaw_rate = None  # Max yaw rate
         self.nav_speed = 2.0
         self.is_navigating = False
+        self.target_local = None  # Local (map) frame target for TF broadcast
         
         # Thread lock for state variables
         self.state_lock = threading.Lock()
+
+        # --- TF Broadcaster for navigate_target frame ---
+        self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
 
         # --- Subscribers ---
         self.geopose_sub = self.create_subscription(
@@ -317,17 +322,27 @@ class NavigateGlobalServiceNode(Node):
             # Relative altitude: add z to current altitude
             target_alt = current_gps['alt'] + request.z
         else:
-            # Absolute altitude or default
-            if request.z > 0:
-                target_alt = current_gps['alt'] + request.z  # Treat as relative by default
-            else:
-                target_alt = current_gps['alt']  # Keep current altitude
+            # Absolute altitude (for 'map' frame or default)
+            target_alt = request.z
 
         # Set target
         with self.state_lock:
             self.target_lat = request.lat
             self.target_lon = request.lon
             self.target_alt = target_alt
+            
+            # Compute approximate local target for TF broadcast
+            if self.current_pose is not None:
+                curr_lat_rad = math.radians(current_gps['lat'])
+                east_offset = (request.lon - current_gps['lon']) * 111320.0 * math.cos(curr_lat_rad)
+                north_offset = (request.lat - current_gps['lat']) * 111320.0
+                self.target_local = {
+                    'x': self.current_pose.pose.position.x + east_offset,
+                    'y': self.current_pose.pose.position.y + north_offset,
+                    'z': target_alt
+                }
+            else:
+                self.target_local = None
             
             # Set target yaw: only if both yaw AND yaw_rate are specified
             if request.yaw != 0 and request.yaw_rate > 0:
@@ -407,6 +422,19 @@ class NavigateGlobalServiceNode(Node):
             target_lat = self.target_lat
             target_lon = self.target_lon
             target_alt = self.target_alt
+            target_local = self.target_local
+
+        # Broadcast navigate_target TF if local target is known
+        if target_local is not None:
+            t = TransformStamped()
+            t.header.stamp = self.get_clock().now().to_msg()
+            t.header.frame_id = 'odom'
+            t.child_frame_id = 'navigate_target'
+            t.transform.translation.x = target_local['x']
+            t.transform.translation.y = target_local['y']
+            t.transform.translation.z = target_local['z']
+            t.transform.rotation.w = 1.0
+            self.tf_broadcaster.sendTransform(t)
 
         # Calculate horizontal distance
         horiz_distance = haversine_distance(curr_lat, curr_lon, target_lat, target_lon)

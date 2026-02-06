@@ -17,12 +17,13 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPo
 from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 
-from geometry_msgs.msg import PoseStamped, TwistStamped, Twist, Vector3
+from geometry_msgs.msg import PoseStamped, TwistStamped, Twist, Vector3, TransformStamped
 from geographic_msgs.msg import GeoPoseStamped
 from ardupilot_msgs.srv import ArmMotors, ModeSwitch
 from ardupilot_msgs.msg import GlobalPosition
 from drone_navigate.srv import Navigate
 
+import tf2_ros
 import math
 import time
 import threading
@@ -130,7 +131,14 @@ class NavigateServiceNode(Node):
         )
 
         # --- Publishers ---
-        self.vel_pub = self.create_publisher(TwistStamped, '/ap/cmd_vel', 10)
+        # Use BEST_EFFORT QoS to match ArduPilot's subscriber QoS
+        cmd_vel_qos = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1
+        )
+        self.vel_pub = self.create_publisher(TwistStamped, '/ap/cmd_vel', cmd_vel_qos)
         self.gps_pose_pub = self.create_publisher(GlobalPosition, '/ap/cmd_gps_pose', 10)
 
         # --- Service Clients ---
@@ -152,6 +160,9 @@ class NavigateServiceNode(Node):
             self.navigate_callback,
             callback_group=self.srv_callback_group
         )
+
+        # --- TF Broadcaster for navigate_target frame ---
+        self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
 
         # --- Control Timer ---
         self.control_timer = self.create_timer(
@@ -326,6 +337,18 @@ class NavigateServiceNode(Node):
         
         return response
 
+    def broadcast_navigate_target(self, target):
+        """Broadcast navigate_target TF frame at the current target position."""
+        t = TransformStamped()
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = 'odom'
+        t.child_frame_id = 'navigate_target'
+        t.transform.translation.x = target['x']
+        t.transform.translation.y = target['y']
+        t.transform.translation.z = target['z']
+        t.transform.rotation.w = 1.0  # Identity rotation
+        self.tf_broadcaster.sendTransform(t)
+
     def control_loop(self):
         """Control loop for position-based navigation."""
         with self.state_lock:
@@ -341,6 +364,9 @@ class NavigateServiceNode(Node):
             target_yaw = self.target_yaw
             speed = self.nav_speed
             geopose = self.current_geopose
+
+        # Broadcast navigate_target TF so telemetry queries work
+        self.broadcast_navigate_target(target)
 
         # Calculate error in MAP frame
         err_x_map = target['x'] - curr_x

@@ -1,0 +1,300 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <model name="h_base">
+    <static>true</static>
+    
+    <link name="base_link">
+      <!-- Main white square base -->
+      <collision name="base_collision">
+        <geometry>
+          <box>
+            <size>1.5 1.5 0.01</size>
+          </box>
+        </geometry>
+      </collision>
+      <visual name="base_visual">
+        <pose>0 0 0.005 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>1.5 1.5 0.01</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>1.0 1.0 1.0 1</ambient>
+          <diffuse>1.0 1.0 1.0 1</diffuse>
+          <specular>0.1 0.1 0.1 1</specular>
+        </material>
+      </visual>
+
+      <!-- Circle outline - approximated with thin torus-like segments -->
+      <!-- Using 16 small boxes arranged in a circle pattern -->
+      
+      <!-- Circle segment 1 - 0 degrees -->
+      <visual name="circle_seg_1">
+        <pose>0.6 0 0.011 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.05 0.25 0.005</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.0 0.0 0.0 1</ambient>
+          <diffuse>0.0 0.0 0.0 1</diffuse>
+        </material>
+      </visual>
+      
+      <!-- Circle segment 2 - 22.5 degrees -->
+      <visual name="circle_seg_2">
+        <pose>0.5544 0.2296 0.011 0 0 0.3927</pose>
+        <geometry>
+          <box>
+            <size>0.05 0.25 0.005</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.0 0.0 0.0 1</ambient>
+          <diffuse>0.0 0.0 0.0 1</diffuse>
+        </material>
+      </visual>
+      
+      <!-- Circle segment 3 - 45 degrees -->
+      <visual name="circle_seg_3">
+        <pose>0.4243 0.4243 0.011 0 0 0.7854</pose>
+        <geometry>
+          <box>
+            <size>0.05 0.25 0.005</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.0 0.0 0.0 1</ambient>
+          <diffuse>0.0 0.0 0.0 1</diffuse>
+        </material>
+      </visual>
+      
+      <!-- Circle segment 4 - 67.5 degrees -->
+      <visual name="circle_seg_4">
+        <pose>0.2296 0.5544 0.011 0 0 1.1781</pose>
+        <geometry>
+          <box>
+            <size>0.05 0.25 0.005</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.0 0.0 0.0 1</ambient>
+          <diffuse>0.0 0.0 0.0 1</diffuse>
+        </material>
+      </visual>
+      
+      <!-- Circle segment 5 - 90 degrees -->
+      <visual name="circle_seg_5">
+        <pose>0 0.6 0.011 0 0 1.5708</pose>
+        <geometry>
+          <box>
+            <size>0.05 0.25 0.005</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.0 0.0 0.0 1</ambient>
+          <diffuse>0.0 0.0 0.0 1</diffuse>
+        </material>
+      </visual>
+      
+      <!-- Circle segment 6 - 112.5 degrees -->
+      <visual name="circle_seg_6">
+        <pose>-0.2296 0.5544 0.011 0 0 1.9635</pose>
+        <geometry>
+          <box>
+            <size>0.05 0.25 0.005</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.0 0.0 0.0 1</ambient>
+          <diffuse>0.0 0.0 0.0 1</diffuse>
+        </material>
+      </visual>
+      
+      <!-- Circle segment 7 - 135 degrees -->
+      <visual name="circle_seg_7">
+        <pose>-0.4243 0.4243 0.011 0 0 2.3562</pose>
+        <geometry>
+          <box>
+            <size>0.05 0.25 0.005</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.0 0.0 0.0 1</ambient>
+          <diffuse>0.0 0.0 0.0 1</diffuse>
+        </material>
+      </visual>
+      
+      <!-- Circle segment 8 - 157.5 degrees -->
+      <visual name="circle_seg_8">
+        <pose>-0.5544 0.2296 0.011 0 0 2.7489</pose>
+        <geometry>
+          <box>
+            <size>0.05 0.25 0.005</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.0 0.0 0.0 1</ambient>
+          <diffuse>0.0 0.0 0.0 1</diffuse>
+        </material>
+      </visual>
+      
+      <!-- Circle segment 9 - 180 degrees -->
+      <visual name="circle_seg_9">
+        <pose>-0.6 0 0.011 0 0 3.1416</pose>
+        <geometry>
+          <box>
+            <size>0.05 0.25 0.005</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.0 0.0 0.0 1</ambient>
+          <diffuse>0.0 0.0 0.0 1</diffuse>
+        </material>
+      </visual>
+      
+      <!-- Circle segment 10 - 202.5 degrees -->
+      <visual name="circle_seg_10">
+        <pose>-0.5544 -0.2296 0.011 0 0 3.5343</pose>
+        <geometry>
+          <box>
+            <size>0.05 0.25 0.005</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.0 0.0 0.0 1</ambient>
+          <diffuse>0.0 0.0 0.0 1</diffuse>
+        </material>
+      </visual>
+      
+      <!-- Circle segment 11 - 225 degrees -->
+      <visual name="circle_seg_11">
+        <pose>-0.4243 -0.4243 0.011 0 0 3.927</pose>
+        <geometry>
+          <box>
+            <size>0.05 0.25 0.005</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.0 0.0 0.0 1</ambient>
+          <diffuse>0.0 0.0 0.0 1</diffuse>
+        </material>
+      </visual>
+      
+      <!-- Circle segment 12 - 247.5 degrees -->
+      <visual name="circle_seg_12">
+        <pose>-0.2296 -0.5544 0.011 0 0 4.3197</pose>
+        <geometry>
+          <box>
+            <size>0.05 0.25 0.005</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.0 0.0 0.0 1</ambient>
+          <diffuse>0.0 0.0 0.0 1</diffuse>
+        </material>
+      </visual>
+      
+      <!-- Circle segment 13 - 270 degrees -->
+      <visual name="circle_seg_13">
+        <pose>0 -0.6 0.011 0 0 4.7124</pose>
+        <geometry>
+          <box>
+            <size>0.05 0.25 0.005</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.0 0.0 0.0 1</ambient>
+          <diffuse>0.0 0.0 0.0 1</diffuse>
+        </material>
+      </visual>
+      
+      <!-- Circle segment 14 - 292.5 degrees -->
+      <visual name="circle_seg_14">
+        <pose>0.2296 -0.5544 0.011 0 0 5.1051</pose>
+        <geometry>
+          <box>
+            <size>0.05 0.25 0.005</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.0 0.0 0.0 1</ambient>
+          <diffuse>0.0 0.0 0.0 1</diffuse>
+        </material>
+      </visual>
+      
+      <!-- Circle segment 15 - 315 degrees -->
+      <visual name="circle_seg_15">
+        <pose>0.4243 -0.4243 0.011 0 0 5.4978</pose>
+        <geometry>
+          <box>
+            <size>0.05 0.25 0.005</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.0 0.0 0.0 1</ambient>
+          <diffuse>0.0 0.0 0.0 1</diffuse>
+        </material>
+      </visual>
+      
+      <!-- Circle segment 16 - 337.5 degrees -->
+      <visual name="circle_seg_16">
+        <pose>0.5544 -0.2296 0.011 0 0 5.8905</pose>
+        <geometry>
+          <box>
+            <size>0.05 0.25 0.005</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.0 0.0 0.0 1</ambient>
+          <diffuse>0.0 0.0 0.0 1</diffuse>
+        </material>
+      </visual>
+
+      <!-- Letter H - Left vertical bar -->
+      <visual name="h_left_bar">
+        <pose>-0.2 0 0.012 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.1 0.7 0.005</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.0 0.0 0.0 1</ambient>
+          <diffuse>0.0 0.0 0.0 1</diffuse>
+        </material>
+      </visual>
+      
+      <!-- Letter H - Right vertical bar -->
+      <visual name="h_right_bar">
+        <pose>0.2 0 0.012 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.1 0.7 0.005</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.0 0.0 0.0 1</ambient>
+          <diffuse>0.0 0.0 0.0 1</diffuse>
+        </material>
+      </visual>
+      
+      <!-- Letter H - Horizontal bar (middle) -->
+      <visual name="h_horizontal_bar">
+        <pose>0 0 0.012 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.5 0.1 0.005</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.0 0.0 0.0 1</ambient>
+          <diffuse>0.0 0.0 0.0 1</diffuse>
+        </material>
+      </visual>
+
+    </link>
+  </model>
+</sdf>

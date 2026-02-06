@@ -15,10 +15,16 @@ from ardupilot_msgs.srv import ModeSwitch
 from drone_navigate.msg import BaseDetection
 import colorful as cf
 from collections import deque
+from rclpy.callback_groups import ReentrantCallbackGroup
 
 class Tools(Node):
     def __init__(self) -> None:
         super().__init__('tools_mission2_node')
+
+        # Callback groups for MultiThreadedExecutor
+        self.service_cb_group = ReentrantCallbackGroup()
+        self.client_cb_group = ReentrantCallbackGroup()
+
         self.fsm = GoingToBase()
         self.mission_running = False
         
@@ -62,7 +68,7 @@ class Tools(Node):
         self.base_lon = self.get_parameter('base_lon').get_parameter_value().double_value
         self.base_alt = self.get_parameter('base_alt').get_parameter_value().double_value
         
-        self.get_logger().info(cf.cyan(f"Base coordinates - Lat: {self.base_lat}, Lon: {self.base_lon}, Alt: {self.base_alt}m"))
+        self.get_logger().info(f"Base coordinates - Lat: {self.base_lat}, Lon: {self.base_lon}, Alt: {self.base_alt}m")
         
     def setSubscribers(self):
         self.create_subscription(BaseDetection, '/yolo/base_detection', self.base_detection_callback, 10)
@@ -70,19 +76,27 @@ class Tools(Node):
         pass
         
     def setClients(self):
-        self.navigate = self.create_client(Navigate, 'avfl/navigate')
-        self.navigate_global = self.create_client(NavigateGlobal, 'avfl/navigate_global')
-        self.get_telemetry = self.create_client(GetTelemetry, 'avfl/get_telemetry')        
+        self.navigate = self.create_client(Navigate, 'avfl/navigate', callback_group=self.client_cb_group)
+        self.navigate_global = self.create_client(NavigateGlobal, 'avfl/navigate_global', callback_group=self.client_cb_group)
+        self.get_telemetry = self.create_client(GetTelemetry, 'avfl/get_telemetry', callback_group=self.client_cb_group)
+        self.land_client = self.create_client(ModeSwitch, '/ap/mode_switch', callback_group=self.client_cb_group)        
         
 
     def setServer(self):
-        self.create_service(Trigger, '/start_mission2', self.start_mission_callback)
-        
+        self.create_service(Trigger, '/start_mission2', self.start_mission_callback, callback_group=self.service_cb_group)
+
+    def wait_for_future(self, future, timeout_sec=10.0):
+        """Wait for a future to complete without blocking the executor."""
+        start = time.time()
+        while not future.done() and (time.time() - start) < timeout_sec:
+            time.sleep(0.05)
+        return future.done()
+
     def start_mission_callback(self, request, response):
         self.mission_running = True
         
         # Initialize drone position
-        self.get_logger().info(cf.blue("Initializing Mission 2 - Mobile Base Landing"))
+        self.get_logger().info("Initializing Mission 2 - Mobile Base Landing")
         
         # Loop da missão
         while self.mission_running and rclpy.ok():
@@ -149,8 +163,7 @@ class Tools(Node):
         req = ModeSwitch.Request()
         req.mode = 9  # LAND mode
         future = self.land_client.call_async(req)
-        rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
-        if future.done():
+        if self.wait_for_future(future, timeout_sec=5.0):
             result = future.result()
             if result.status:
                 self.get_logger().info("Landing mode activated")
@@ -162,6 +175,11 @@ class Tools(Node):
     def navigateGlobalWait(self, lat, lon, z, yaw=float('nan'), speed=0.5, tolerance=0.2, auto_arm=True):
         '''Navigate to GPS coordinates and wait until target is reached'''
         try:
+            # Wait for service to be available
+            if not self.navigate_global.wait_for_service(timeout_sec=5.0):
+                self.get_logger().error("Navigate global service not available")
+                return None
+            
             req = NavigateGlobal.Request()
             req.lat = float(lat)
             req.lon = float(lon)
@@ -172,13 +190,13 @@ class Tools(Node):
             req.frame_id = 'map'
             req.auto_arm = auto_arm
             
-            self.get_logger().info(cf.cyan(f"Navigating to GPS: Lat={lat:.6f}, Lon={lon:.6f}, Alt={z}m"))
+            self.get_logger().info(f"Navigating to GPS: Lat={lat:.6f}, Lon={lon:.6f}, Alt={z}m")
             
             future = self.navigate_global.call_async(req)
-            rclpy.spin_until_future_complete(self, future, timeout_sec=10.0)
             
-            if not future.done():
-                self.get_logger().error("Global navigation timeout")
+            # Wait for service response (MultiThreadedExecutor handles callbacks)
+            if not self.wait_for_future(future, timeout_sec=30.0):
+                self.get_logger().error("Global navigation service call timeout after 30 seconds")
                 return None
             
             res = future.result()
@@ -188,21 +206,30 @@ class Tools(Node):
             
             self.get_logger().info("Global navigation started, waiting to reach target...")
             
+            # Safety timeout: allow max 120 seconds for GPS navigation
+            nav_start = time.time()
+            nav_timeout = 120.0
+            
             # Wait until we reach the target
             while rclpy.ok():
+                if time.time() - nav_start > nav_timeout:
+                    self.get_logger().warn(f"navigateGlobalWait timeout ({nav_timeout}s)")
+                    return res
+                
                 telem_req = GetTelemetry.Request()
                 telem_req.frame_id = 'navigate_target'
                 telem_future = self.get_telemetry.call_async(telem_req)
-                rclpy.spin_until_future_complete(self, telem_future, timeout_sec=1.0)
                 
-                if not telem_future.done():
+                if not self.wait_for_future(telem_future, timeout_sec=1.0):
                     continue
                 
                 telem = telem_future.result()
                 distance = math.sqrt(telem.x ** 2 + telem.y ** 2 + telem.z ** 2)
                 
+                self.get_logger().info(f"Distance to GPS target: {distance:.2f}m (tolerance: {tolerance}m)", throttle_duration_sec=2.0)
+                
                 if distance < tolerance:
-                    self.get_logger().info(cf.green("Target GPS location reached!"))
+                    self.get_logger().info("Target GPS location reached!")
                     return res
                 time.sleep(0.1)
         except Exception as e:
@@ -223,9 +250,8 @@ class Tools(Node):
             req.auto_arm = auto_arm
             
             future = self.navigate.call_async(req)
-            rclpy.spin_until_future_complete(self, future, timeout_sec=10.0)
             
-            if not future.done():
+            if not self.wait_for_future(future, timeout_sec=10.0):
                 self.get_logger().error("Navigação timeout")
                 return None
             
@@ -234,13 +260,22 @@ class Tools(Node):
                 self.get_logger().error("Falha na navegação")
                 return res
             self.get_logger().info("Navegação iniciada")
+            
+            # Safety timeout
+            nav_distance = math.sqrt(float(x)**2 + float(y)**2 + float(z)**2)
+            nav_timeout = max(10.0, (nav_distance / max(speed, 0.1)) * 3.0 + 5.0)
+            nav_start = time.time()
+            
             while rclpy.ok():
+                if time.time() - nav_start > nav_timeout:
+                    self.get_logger().warn(f"navigateWait timeout ({nav_timeout:.1f}s)")
+                    return res
+                
                 telem_req = GetTelemetry.Request()
                 telem_req.frame_id = 'navigate_target'
                 telem_future = self.get_telemetry.call_async(telem_req)
-                rclpy.spin_until_future_complete(self, telem_future, timeout_sec=1.0)
                 
-                if not telem_future.done():
+                if not self.wait_for_future(telem_future, timeout_sec=1.0):
                     continue
                 
                 telem = telem_future.result()
@@ -269,9 +304,8 @@ class Tools(Node):
                 req.auto_arm = auto_arm
                 
                 future = self.navigate.call_async(req)
-                rclpy.spin_until_future_complete(self, future, timeout_sec=10.0)
                 
-                if not future.done():
+                if not self.wait_for_future(future, timeout_sec=10.0):
                     self.get_logger().error("Navegação timeout")
                     return "failed"
                 
@@ -284,9 +318,8 @@ class Tools(Node):
                     telem_req = GetTelemetry.Request()
                     telem_req.frame_id = 'navigate_target'
                     telem_future = self.get_telemetry.call_async(telem_req)
-                    rclpy.spin_until_future_complete(self, telem_future, timeout_sec=1.0)
                     
-                    if not telem_future.done():
+                    if not self.wait_for_future(telem_future, timeout_sec=1.0):
                         continue
                     
                     telem = telem_future.result()
@@ -295,8 +328,7 @@ class Tools(Node):
                         map_req = GetTelemetry.Request()
                         map_req.frame_id = 'map'
                         map_future = self.get_telemetry.call_async(map_req)
-                        rclpy.spin_until_future_complete(self, map_future, timeout_sec=1.0)
-                        if map_future.done():
+                        if self.wait_for_future(map_future, timeout_sec=1.0):
                             self.last_base_coordinates = map_future.result()
                             self.last_base_coordinates.x = self.last_base_coordinates.x - (self.y_center - self.image_height//2)/self.fy * self.last_base_coordinates.z
                             self.last_base_coordinates.y = self.last_base_coordinates.y - (self.x_center - self.image_width//2)/self.fx * self.last_base_coordinates.z
