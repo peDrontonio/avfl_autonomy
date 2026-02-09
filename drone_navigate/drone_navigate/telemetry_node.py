@@ -20,7 +20,7 @@ from geometry_msgs.msg import PoseStamped, TwistStamped
 from geographic_msgs.msg import GeoPoseStamped
 from sensor_msgs.msg import BatteryState
 from ardupilot_msgs.msg import GlobalPosition
-from mavros_msgs.msg import State
+from ardupilot_msgs.msg import Status as APStatus
 from std_msgs.msg import String as RosString
 from drone_navigate.srv import GetTelemetry
 
@@ -137,12 +137,19 @@ class TelemetryNode(Node):
             callback_group=self.callback_group
         )
 
-        # FCU state (connected, armed, mode)
+        # FCU status (armed, mode, flying, failsafe)
+        # ArduPilot publishes /ap/status with RELIABLE + TRANSIENT_LOCAL QoS
+        status_qos = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1
+        )
         self.state_sub = self.create_subscription(
-            State,
-            '/ap/state',
+            APStatus,
+            '/ap/status',
             self.state_callback,
-            qos,
+            status_qos,
             callback_group=self.callback_group
         )
 
@@ -182,8 +189,8 @@ class TelemetryNode(Node):
         """Handle battery state updates."""
         self.current_battery = msg
 
-    def state_callback(self, msg: State):
-        """Handle FCU state updates."""
+    def state_callback(self, msg: APStatus):
+        """Handle FCU status updates from ArduPilot DDS."""
         self.current_state = msg
 
     def get_telemetry_callback(self, request, response):
@@ -205,10 +212,12 @@ class TelemetryNode(Node):
         response.frame_id = target_frame
 
         # --- Get State (connected, armed, mode) ---
+        # ardupilot_msgs/msg/Status has: armed (bool), mode (uint8), flying (bool)
+        # If we've received a status message, the drone is connected.
         if self.current_state is not None:
-            response.connected = self.current_state.connected
+            response.connected = True
             response.armed = self.current_state.armed
-            response.mode = self.current_state.mode
+            response.mode = str(self.current_state.mode)
         else:
             response.connected = False
             response.armed = False
