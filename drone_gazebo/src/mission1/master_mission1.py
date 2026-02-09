@@ -243,7 +243,7 @@ class MasterMission1(Tools):
             
             # Stop completely before starting centering
             print(cf.yellow("Stopping before centering..."))
-            self.navigateWait(x=0, y=0, z=0, frame_id='body', auto_arm=False, tolerance=0.05)
+            self.navigateWait(x=0, y=0, z=0, frame_id='body', auto_arm=False, tolerance=0.1)
             time.sleep(0.5)
             
             # VERIFY: Must have all 4 markers visible to stay in Centering

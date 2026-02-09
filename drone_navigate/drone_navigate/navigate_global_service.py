@@ -154,7 +154,8 @@ class NavigateGlobalServiceNode(Node):
         self.state_lock = threading.Lock()
 
         # --- TF Broadcaster for navigate_target frame ---
-        self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
+        # Static TF is time-independent, avoids sim_time vs wall_clock mismatch
+        self.tf_broadcaster = tf2_ros.StaticTransformBroadcaster(self)
 
         # --- Subscribers ---
         self.geopose_sub = self.create_subscription(
@@ -356,6 +357,18 @@ class NavigateGlobalServiceNode(Node):
             self.nav_speed = request.speed if request.speed > 0 else self.default_speed
             self.is_navigating = True
 
+        # Broadcast navigate_target static TF so telemetry queries work
+        if self.target_local is not None:
+            t = TransformStamped()
+            # Static TF: stamp=0 means valid at all times (avoids sim_time mismatch)
+            t.header.frame_id = 'odom'
+            t.child_frame_id = 'navigate_target'
+            t.transform.translation.x = self.target_local['x']
+            t.transform.translation.y = self.target_local['y']
+            t.transform.translation.z = self.target_local['z']
+            t.transform.rotation.w = 1.0
+            self.tf_broadcaster.sendTransform(t)
+
         # Calculate distance for info
         distance_m = haversine_distance(
             current_gps['lat'], current_gps['lon'],
@@ -423,18 +436,6 @@ class NavigateGlobalServiceNode(Node):
             target_lon = self.target_lon
             target_alt = self.target_alt
             target_local = self.target_local
-
-        # Broadcast navigate_target TF if local target is known
-        if target_local is not None:
-            t = TransformStamped()
-            t.header.stamp = self.get_clock().now().to_msg()
-            t.header.frame_id = 'odom'
-            t.child_frame_id = 'navigate_target'
-            t.transform.translation.x = target_local['x']
-            t.transform.translation.y = target_local['y']
-            t.transform.translation.z = target_local['z']
-            t.transform.rotation.w = 1.0
-            self.tf_broadcaster.sendTransform(t)
 
         # Calculate horizontal distance
         horiz_distance = haversine_distance(curr_lat, curr_lon, target_lat, target_lon)

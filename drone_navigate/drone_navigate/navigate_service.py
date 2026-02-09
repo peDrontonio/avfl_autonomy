@@ -72,7 +72,7 @@ class NavigateServiceNode(Node):
         self.timer_callback_group = MutuallyExclusiveCallbackGroup()
 
         # --- Parameters ---
-        self.declare_parameter('position_tolerance', 0.03)
+        self.declare_parameter('position_tolerance', 0.05)
         self.declare_parameter('yaw_tolerance', 0.005)  # ~0.29 degrees
         self.declare_parameter('control_rate', 20.0)
         self.declare_parameter('max_velocity', 1.0)
@@ -162,7 +162,8 @@ class NavigateServiceNode(Node):
         )
 
         # --- TF Broadcaster for navigate_target frame ---
-        self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
+        # Static TF is time-independent, avoids sim_time vs wall_clock mismatch
+        self.tf_broadcaster = tf2_ros.StaticTransformBroadcaster(self)
 
         # --- Control Timer ---
         self.control_timer = self.create_timer(
@@ -328,6 +329,9 @@ class NavigateServiceNode(Node):
             self.nav_speed = min(request.speed if request.speed > 0 else 0.5, self.max_velocity)
             self.is_navigating = True
 
+        # Broadcast navigate_target static TF so telemetry queries work
+        self.broadcast_navigate_target(self.target_position)
+
         response.success = True
         response.message = (
             f"Navigation started to ({self.target_position['x']:.2f}, "
@@ -340,7 +344,7 @@ class NavigateServiceNode(Node):
     def broadcast_navigate_target(self, target):
         """Broadcast navigate_target TF frame at the current target position."""
         t = TransformStamped()
-        t.header.stamp = self.get_clock().now().to_msg()
+        # Static TF: stamp=0 means valid at all times (avoids sim_time mismatch)
         t.header.frame_id = 'odom'
         t.child_frame_id = 'navigate_target'
         t.transform.translation.x = target['x']
@@ -364,9 +368,6 @@ class NavigateServiceNode(Node):
             target_yaw = self.target_yaw
             speed = self.nav_speed
             geopose = self.current_geopose
-
-        # Broadcast navigate_target TF so telemetry queries work
-        self.broadcast_navigate_target(target)
 
         # Calculate error in MAP frame
         err_x_map = target['x'] - curr_x
