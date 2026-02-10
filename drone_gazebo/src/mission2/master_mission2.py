@@ -29,7 +29,7 @@ class MasterMission2(Tools):
     def update(self):
         """
         Lógica da máquina de estados da Missão 2.
-        FSM: GoingToBase -> Search_Base -> Scan_for_Base -> Descent -> Landing
+        FSM: GoingToBase -> Search_Base -> Scan_for_Base -> Landing
         """
         if self.fsm == 'GoingToBase':
             self.current_state = 'GoingToBase'
@@ -44,7 +44,7 @@ class MasterMission2(Tools):
                 lon=self.base_lon,
                 z=self.base_alt,
                 speed=0.5,
-                tolerance=20.0, 
+                tolerance=2.0, 
                 auto_arm=True
             )
             
@@ -134,31 +134,6 @@ class MasterMission2(Tools):
                 time.sleep(0.1)
 
 
-        elif self.fsm == 'Descent':
-            self.current_state = 'Descent'
-            self.get_logger().info("=" * 60)
-            self.get_logger().info("ESTADO - Descent")
-            self.get_logger().info("=" * 60)
-            self.get_logger().info("Descending to landing altitude...")
-            
-            try:
-                # Descend while maintaining position over base
-                telem_req = GetTelemetry.Request()
-                telem_req.frame_id = 'map'
-                telem_future = self.get_telemetry.call_async(telem_req)
-                
-                if self.wait_for_future(telem_future, timeout_sec=1.0):
-                    telem = telem_future.result()
-                    self.get_logger().info(f"Descending to 0.8m altitude...")
-                    res = self.navigateWaitTeste(x=telem.x, y=telem.y, z=0.8, 
-                                                 frame_id='map', speed=0.2)
-                
-                self.get_logger().info("Descent complete, ready to land")
-                self.fsm.add('ready_to_land')
-                self.current_state = ''
-            except Exception as e:
-                self.get_logger().error(f"Error during descent: {e}")
-
         elif self.fsm == 'Landing':
             self.current_state = 'Landing'
             self.get_logger().info("=" * 60)
@@ -171,12 +146,18 @@ class MasterMission2(Tools):
                     if self.is_base_in_y_Axis(tolerance=15):
                         self.get_logger().info("Base aligned! Executing landing sequence...")
                         self.land()
-                        self.get_logger().info("★" * 30)
-                        self.get_logger().info("Landing complete! Mission successful!")
-                        self.get_logger().info("★" * 30)
-                        self.current_state = ''
-                        self.fsm.add('finished')
-                        self.mission_running = False
+                        
+                        # Wait for landing to actually complete
+                        if self.wait_for_landing(timeout=300.0):
+                            self.get_logger().info("★" * 30)
+                            self.get_logger().info("Landing complete! Mission successful!")
+                            self.get_logger().info("★" * 30)
+                            self.current_state = ''
+                            self.fsm.add('finished')
+                            self.mission_running = False
+                        else:
+                            self.get_logger().error("Landing timeout or failed")
+                            self.mission_running = False
                         break
                     time.sleep(0.1)
             except Exception as e:

@@ -38,7 +38,7 @@ class Tools(Node):
         self.last_base_coordinates = None
         
         # Consecutive detection tracking
-        self.consecutive_detections = 4
+        self.consecutive_detections = 0
         self.required_consecutive_detections = 3
         
         # Image parameters
@@ -171,6 +171,73 @@ class Tools(Node):
                 self.get_logger().error("Failed to activate landing mode")
         else:
             self.get_logger().error("Landing service call timeout")
+    
+    def wait_for_landing(self, timeout=120.0):
+        '''Wait until the drone has actually landed based only on altitude stability'''
+        self.get_logger().info("Aguardando confirmação de pouso (estabilidade de altitude)...")
+        
+        start_time = time.time()
+        
+        # Variáveis de controle
+        stable_start_time = None
+        reference_altitude = 0.0
+        
+        # Parâmetros de calibração
+        landing_region = 1.0      # Altura (m) para começar a monitorar
+        stability_margin = 0.10   # Margem (m) permitida de variação em relação à referência
+        required_time = 5.0       # Tempo (s) que deve ficar dentro da margem
+        
+        while rclpy.ok():
+            # Timeout de segurança da função
+            if time.time() - start_time > timeout:
+                self.get_logger().warn(f"Timeout de pouso ({timeout}s)")
+                return False
+            
+            # Chama o serviço de telemetria
+            telem_req = GetTelemetry.Request()
+            telem_req.frame_id = 'map'
+            telem_future = self.get_telemetry.call_async(telem_req)
+            
+            if self.wait_for_future(telem_future, timeout_sec=1.0):
+                telem = telem_future.result()
+                current_z = telem.z
+                
+                # Se a altitude for maior que 1.0m, o drone ainda está voando alto
+                if current_z > landing_region:
+                    if stable_start_time is not None:
+                        self.get_logger().info(f"Altitude subiu ({current_z:.2f}m). Resetando timer.")
+                        stable_start_time = None
+                    
+                    self.get_logger().info(f"Descendo... Alt: {current_z:.2f}m", throttle_duration_sec=2.0)
+                
+                # Entrou na região de pouso (< 1.0m)
+                else:
+                    if stable_start_time is None:
+                        # Começa a contar o tempo agora.
+                        # TRAVA a altitude atual como referência.
+                        stable_start_time = time.time()
+                        reference_altitude = current_z
+                        self.get_logger().info(f"Zona de pouso alcançada ({current_z:.2f}m). Iniciando verificação de estabilidade...")
+                    
+                    else:
+                        # Compara a altitude atual com a REFERÊNCIA travada (não com a anterior)
+                        diff = abs(current_z - reference_altitude)
+                        
+                        if diff > stability_margin:
+                            # Se a diferença for grande, significa que o drone ainda está descendo (mesmo que devagar)
+                            # Atualizamos a referência para a nova posição e zeramos o timer
+                            self.get_logger().info(f"Variação detectada ({diff:.3f}m). Ainda em movimento...")
+                            reference_altitude = current_z
+                            stable_start_time = time.time()
+                        
+                        elif (time.time() - stable_start_time) > required_time:
+                            # Se passou 5 segundos e a altitude nunca saiu da margem de 0.1m da referência
+                            self.get_logger().info(f"Pouso confirmado! Altitude estável em {reference_altitude:.2f}m por {required_time}s.")
+                            return True
+            
+            time.sleep(0.2)
+        
+        return False
 
     def navigateGlobalWait(self, lat, lon, z, yaw=float('nan'), speed=0.5, tolerance=0.2, auto_arm=True):
         '''Navigate to GPS coordinates and wait until target is reached'''
@@ -205,6 +272,9 @@ class Tools(Node):
                 return res
             
             self.get_logger().info("Global navigation started, waiting to reach target...")
+            
+            # Wait for TF propagation and drone to start moving
+            time.sleep(2.0)
             
             # Safety timeout: allow max 120 seconds for GPS navigation
             nav_start = time.time()
@@ -279,7 +349,7 @@ class Tools(Node):
                     continue
                 
                 telem = telem_future.result()
-                distance = math.sqrt(telem.x ** 2 + telem.y ** 2 + telem.z ** 2)
+                distance = math.sqrt(telem.x ** 2 + telem.y ** 2 + (telem.z * z_participation) ** 2)
                 # self.get_logger().info(f"Distância até o alvo: {distance:.2f} m")
                 if distance < tolerance:
                     self.get_logger().info("Alvo alcançado")
@@ -333,7 +403,7 @@ class Tools(Node):
                             self.last_base_coordinates.x = self.last_base_coordinates.x - (self.y_center - self.image_height//2)/self.fy * self.last_base_coordinates.z
                             self.last_base_coordinates.y = self.last_base_coordinates.y - (self.x_center - self.image_width//2)/self.fx * self.last_base_coordinates.z
                     
-                    distance = math.sqrt(telem.x ** 2 + telem.y ** 2 + telem.z ** 2)
+                    distance = math.sqrt(telem.x ** 2 + telem.y ** 2 + (telem.z * z_participation) ** 2)
                     # self.get_logger().info(f"Distância até o alvo: {distance:.2f} m")
                     if (distance < tolerance):
                         self.get_logger().info("Base não encontrada nessa direção. Tentando novamente.")
@@ -364,7 +434,7 @@ class Tools(Node):
                     self.last_base_coordinates = self.get_telemetry(frame_id='map')
                     self.last_base_coordinates.x = self.last_base_coordinates.x - (self.y_center - self.image_height//2)/self.fy * self.last_base_coordinates.z
                     self.last_base_coordinates.y = self.last_base_coordinates.y - (self.x_center - self.image_width//2)/self.fx * self.last_base_coordinates.z
-                distance = math.sqrt(telem.x ** 2 + telem.y ** 2 + telem.z ** 2)
+                distance = math.sqrt(telem.x ** 2 + telem.y ** 2 + (telem.z * z_participation) ** 2)
                 # self.get_logger().info(f"Distância até o alvo: {distance:.2f} m")
                 if (distance < tolerance):
                     self.get_logger().info("Limite de movimento alcançado.")
@@ -416,7 +486,7 @@ class Tools(Node):
             while rclpy.ok():
                 diferenca = self.get_telemetry(frame_id='map')
                 diferenca.x, diferenca.y, diferenca.z = (inicial.x - diferenca.x), (inicial.y - diferenca.y), (inicial.z - diferenca.z)
-                distance = math.sqrt(diferenca.x ** 2 + diferenca.y ** 2 + diferenca.z ** 2)
+                distance = math.sqrt(diferenca.x ** 2 + diferenca.y ** 2 + (diferenca.z * z_participation) ** 2)
                 # self.get_logger().info(f"Distância até o alvo: {distance:.2f} m")
                 # self.get_logger().info(f"X: {diferenca.x}\nY: {diferenca.y}\n Z: {diferenca.z}\n")
                 if distance < tolerance:
@@ -444,7 +514,7 @@ class Tools(Node):
                 while rclpy.ok():
                     diferenca = self.get_telemetry(frame_id='map')
                     diferenca.x, diferenca.y, diferenca.z = (inicial.x - diferenca.x), (inicial.y - diferenca.y), (inicial.z - diferenca.z)
-                    distance = math.sqrt(diferenca.x ** 2 + diferenca.y ** 2 + diferenca.z ** 2)
+                    distance = math.sqrt(diferenca.x ** 2 + diferenca.y ** 2 + (diferenca.z * z_participation) ** 2)
                     if self.consecutive_detections > self.required_consecutive_detections:
                         self.last_base_coordinates = self.get_telemetry(frame_id='map')
                         self.last_base_coordinates.x = self.last_base_coordinates.x - (self.y_center - self.image_height//2)/self.fy * self.last_base_coordinates.z
@@ -482,12 +552,12 @@ class Tools(Node):
             while rclpy.ok():
                 diferenca = self.get_telemetry(frame_id='map')
                 diferenca.x, diferenca.y, diferenca.z = (inicial.x - diferenca.x), (inicial.y - diferenca.y), (inicial.z - diferenca.z)
-                distance = math.sqrt(diferenca.x ** 2 + diferenca.y ** 2 + diferenca.z ** 2)
+                distance = math.sqrt(diferenca.x ** 2 + diferenca.y ** 2 + (diferenca.z * z_participation) ** 2)
                 if self.consecutive_detections > self.required_consecutive_detections:
                     self.last_base_coordinates = self.get_telemetry(frame_id='map')
                     self.last_base_coordinates.x = self.last_base_coordinates.x - (self.y_center - self.image_height//2)/self.fy * self.last_base_coordinates.z
                     self.last_base_coordinates.y = self.last_base_coordinates.y - (self.x_center - self.image_width//2)/self.fx * self.last_base_coordinates.z
-                distance = math.sqrt(diferenca.x ** 2 + diferenca.y ** 2 + diferenca.z ** 2)
+                distance = math.sqrt(diferenca.x ** 2 + diferenca.y ** 2 + (diferenca.z * z_participation) ** 2)
                 self.get_logger().info(f"Distância até o alvo: {distance:.2f} m")
                 if (distance < tolerance):
                     self.get_logger().info("Limite de movimento alcançado.")
