@@ -32,24 +32,6 @@ if [ "$1" == "exec" ] || [ "$1" == "attach" ]; then
     exit 0
 fi
 
-# DDS Agent mode - runs micro_ros_agent for ArduPilot serial communication
-if [ "$1" == "dds" ]; then
-    SERIAL_PORT="${2:-/dev/ttyACM0}"
-    BAUD_RATE="${3:-921600}"
-    
-    echo "=========================================="
-    echo "Starting micro_ros_agent on ${SERIAL_PORT} @ ${BAUD_RATE}"
-    echo "=========================================="
-    
-    docker run -it --rm \
-        --name ${CONTAINER_NAME}-dds \
-        --net=host \
-        --privileged \
-        -v /dev:/dev \
-        ${IMAGE_NAME}:${IMAGE_TAG} \
-        bash -c "source /opt/ros/humble/setup.bash && source /opt/microros_ws/install/setup.bash && ros2 run micro_ros_agent micro_ros_agent serial --dev ${SERIAL_PORT} -b ${BAUD_RATE} -v6"
-    exit 0
-fi
 
 echo "=========================================="
 echo "Starting container: ${CONTAINER_NAME}"
@@ -57,7 +39,6 @@ echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}"
 echo "Mounting workspace: ${WORKSPACE_DIR}"
 echo ""
 echo "Usage tips:"
-echo "  - Start DDS Agent (serial): ./run_jetson.sh dds [serial_port] [baud_rate]"
 echo "  - Attach to container: ./run_jetson.sh exec"
 echo "=========================================="
 
