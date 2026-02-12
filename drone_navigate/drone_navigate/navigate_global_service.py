@@ -95,8 +95,8 @@ class NavigateGlobalServiceNode(Node):
     providing more precise navigation than velocity-based control.
     
     Subscribes to:
-        - /ap/geopose/filtered: Current GPS position
-        - /ap/pose/filtered: Local pose for altitude reference
+        - /ap/geopose/filtered/enu: Current GPS position (NED→ENU converted)
+        - /ap/pose/filtered/enu: Local pose for altitude reference (NED→ENU converted)
         
     Publishes to:
         - /ap/cmd_gps_pose: GPS waypoint commands
@@ -151,10 +151,10 @@ class NavigateGlobalServiceNode(Node):
         # Thread lock for state variables
         self.state_lock = threading.Lock()
 
-        # --- Subscribers ---
+        # --- Subscribers (using ENU-converted topics) ---
         self.geopose_sub = self.create_subscription(
             GeoPoseStamped,
-            '/ap/geopose/filtered',
+            '/ap/geopose/filtered/enu',
             self.geopose_callback,
             qos,
             callback_group=self.sub_callback_group
@@ -162,7 +162,7 @@ class NavigateGlobalServiceNode(Node):
 
         self.pose_sub = self.create_subscription(
             PoseStamped,
-            '/ap/pose/filtered',
+            '/ap/pose/filtered/enu',
             self.pose_callback,
             qos,
             callback_group=self.sub_callback_group
@@ -204,7 +204,7 @@ class NavigateGlobalServiceNode(Node):
 
         self.get_logger().info("Navigate Global Service Node initialized.")
         self.get_logger().info("Service 'avfl/navigate_global' is ready.")
-        self.get_logger().info("Waiting for GPS data from /ap/geopose/filtered...")
+        self.get_logger().info("Waiting for GPS data from /ap/geopose/filtered/enu...")
 
     def geopose_callback(self, msg: GeoPoseStamped):
         """Handle global geopose updates."""

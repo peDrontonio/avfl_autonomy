@@ -53,10 +53,10 @@ class SetYawRateServiceNode(Node):
         self.yaw_rate = 0.0
         self.is_active = False
 
-        # --- Subscribers ---
+        # --- Subscribers (using ENU-converted topic) ---
         self.pose_sub = self.create_subscription(
             PoseStamped,
-            '/ap/pose/filtered',
+            '/ap/pose/filtered/enu',
             self.pose_callback,
             qos
         )

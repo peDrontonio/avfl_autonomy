@@ -45,6 +45,12 @@ install(PROGRAMS
 )
 
 install(PROGRAMS
+  drone_navigate/ned_to_enu_node.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME ned_to_enu_node
+)
+
+install(PROGRAMS
   drone_navigate/set_yaw_rate_service.py
   DESTINATION lib/${PROJECT_NAME}
   RENAME set_yaw_rate_service

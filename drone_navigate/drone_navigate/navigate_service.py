@@ -112,10 +112,10 @@ class NavigateServiceNode(Node):
         # Thread lock for state variables
         self.state_lock = threading.Lock()
 
-        # --- Subscribers ---
+        # --- Subscribers (using ENU-converted topics) ---
         self.pose_sub = self.create_subscription(
             PoseStamped,
-            '/ap/pose/filtered',
+            '/ap/pose/filtered/enu',
             self.pose_callback,
             qos,
             callback_group=self.sub_callback_group
@@ -123,7 +123,7 @@ class NavigateServiceNode(Node):
 
         self.geopose_sub = self.create_subscription(
             GeoPoseStamped,
-            '/ap/geopose/filtered',
+            '/ap/geopose/filtered/enu',
             self.geopose_callback,
             qos,
             callback_group=self.sub_callback_group
@@ -162,7 +162,7 @@ class NavigateServiceNode(Node):
 
         self.get_logger().info("Navigate Service Node initialized.")
         self.get_logger().info("Service 'avfl/navigate' is ready.")
-        self.get_logger().info("Waiting for pose data from /ap/pose/filtered...")
+        self.get_logger().info("Waiting for pose data from /ap/pose/filtered/enu...")
 
     def pose_callback(self, msg: PoseStamped):
         """Handle local pose updates from ArduPilot EKF."""
