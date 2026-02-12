@@ -12,12 +12,12 @@ NED -> ENU conversion:
     Position:
         x_enu =  y_ned   (East  = NED-Y)
         y_enu =  x_ned   (North = NED-X)
-        z_enu = -z_ned   (Up    = -Down)
+        z_enu = z_ned   (Up    = -Down)
 
     Quaternion:
         q_x_enu =  q_y_ned
         q_y_enu =  q_x_ned
-        q_z_enu = -q_z_ned
+        q_z_enu = q_z_ned
         q_w_enu =  q_w_ned
 
 Subscribes to:
@@ -122,7 +122,7 @@ class NedToEnuNode(Node):
         """Convert a position vector from NED to ENU."""
         x_enu = y_ned       # East  = NED-Y
         y_enu = x_ned       # North = NED-X
-        z_enu = -z_ned      # Up    = -Down
+        z_enu = z_ned      # Up    = -Down
         return x_enu, y_enu, z_enu
 
     @staticmethod
@@ -140,19 +140,19 @@ class NedToEnuNode(Node):
         """
         qx_enu = qy_ned
         qy_enu = qx_ned
-        qz_enu = -qz_ned
+        qz_enu = qz_ned
         qw_enu = qw_ned
         return qx_enu, qy_enu, qz_enu, qw_enu
 
     @staticmethod
     def _convert_linear_vel_ned_to_enu(vx_ned: float, vy_ned: float, vz_ned: float):
         """Convert linear velocity from NED to ENU."""
-        return vy_ned, vx_ned, -vz_ned
+        return vy_ned, vx_ned, vz_ned
 
     @staticmethod
     def _convert_angular_vel_ned_to_enu(wx_ned: float, wy_ned: float, wz_ned: float):
         """Convert angular velocity from NED to ENU."""
-        return wy_ned, wx_ned, -wz_ned
+        return wy_ned, wx_ned, wz_ned
 
     # ------------------------------------------------------------------
     # Callbacks
