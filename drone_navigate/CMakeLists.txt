@@ -17,13 +17,14 @@ find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 
-# Generate service interfaces
+# Generate service interfaces and messages
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/Navigate.srv"
   "srv/GetTelemetry.srv"
   "srv/NavigateGlobal.srv"
   "srv/SetYawRate.srv"
-  DEPENDENCIES geometry_msgs ardupilot_msgs
+  "msg/BaseDetection.msg"
+  DEPENDENCIES geometry_msgs ardupilot_msgs std_msgs
 )
 
 install(PROGRAMS
@@ -42,12 +43,6 @@ install(PROGRAMS
   drone_navigate/navigate_global_service.py
   DESTINATION lib/${PROJECT_NAME}
   RENAME navigate_global_service
-)
-
-install(PROGRAMS
-  drone_navigate/ned_to_enu_node.py
-  DESTINATION lib/${PROJECT_NAME}
-  RENAME ned_to_enu_node
 )
 
 install(PROGRAMS

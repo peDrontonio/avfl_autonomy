@@ -26,18 +26,6 @@ def generate_launch_description():
         
         LogInfo(msg='Starting drone navigation services...'),
         
-        # NED to ENU Converter - Must start before other navigation nodes
-        Node(
-            package='drone_navigate',
-            executable='ned_to_enu_node',
-            name='ned_to_enu_node',
-            output='screen',
-            parameters=[{
-                'use_sim_time': LaunchConfiguration('use_sim_time')
-            }],
-            emulate_tty=True,
-        ),
-
         # Telemetry Node - Provides /get_telemetry service
         Node(
             package='drone_navigate',

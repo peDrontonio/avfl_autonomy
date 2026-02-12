@@ -17,12 +17,13 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPo
 from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 
-from geometry_msgs.msg import PoseStamped, TwistStamped, Twist, Vector3
+from geometry_msgs.msg import PoseStamped, TwistStamped, Twist, Vector3, TransformStamped
 from geographic_msgs.msg import GeoPoseStamped
 from ardupilot_msgs.srv import ArmMotors, ModeSwitch
 from ardupilot_msgs.msg import GlobalPosition
 from drone_navigate.srv import Navigate
 
+import tf2_ros
 import math
 import time
 import threading
@@ -71,7 +72,7 @@ class NavigateServiceNode(Node):
         self.timer_callback_group = MutuallyExclusiveCallbackGroup()
 
         # --- Parameters ---
-        self.declare_parameter('position_tolerance', 0.03)
+        self.declare_parameter('position_tolerance', 0.05)
         self.declare_parameter('yaw_tolerance', 0.005)  # ~0.29 degrees
         self.declare_parameter('control_rate', 20.0)
         self.declare_parameter('max_velocity', 1.0)
@@ -112,10 +113,10 @@ class NavigateServiceNode(Node):
         # Thread lock for state variables
         self.state_lock = threading.Lock()
 
-        # --- Subscribers (using ENU-converted topics) ---
+        # --- Subscribers ---
         self.pose_sub = self.create_subscription(
             PoseStamped,
-            '/ap/pose/filtered/enu',
+            '/ap/pose/filtered',
             self.pose_callback,
             qos,
             callback_group=self.sub_callback_group
@@ -123,14 +124,21 @@ class NavigateServiceNode(Node):
 
         self.geopose_sub = self.create_subscription(
             GeoPoseStamped,
-            '/ap/geopose/filtered/enu',
+            '/ap/geopose/filtered',
             self.geopose_callback,
             qos,
             callback_group=self.sub_callback_group
         )
 
         # --- Publishers ---
-        self.vel_pub = self.create_publisher(TwistStamped, '/ap/cmd_vel', 10)
+        # Use BEST_EFFORT QoS to match ArduPilot's subscriber QoS
+        cmd_vel_qos = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1
+        )
+        self.vel_pub = self.create_publisher(TwistStamped, '/ap/cmd_vel', cmd_vel_qos)
         self.gps_pose_pub = self.create_publisher(GlobalPosition, '/ap/cmd_gps_pose', 10)
 
         # --- Service Clients ---
@@ -153,6 +161,10 @@ class NavigateServiceNode(Node):
             callback_group=self.srv_callback_group
         )
 
+        # --- TF Broadcaster for navigate_target frame ---
+        # Static TF is time-independent, avoids sim_time vs wall_clock mismatch
+        self.tf_broadcaster = tf2_ros.StaticTransformBroadcaster(self)
+
         # --- Control Timer ---
         self.control_timer = self.create_timer(
             1.0 / self.control_rate, 
@@ -162,7 +174,7 @@ class NavigateServiceNode(Node):
 
         self.get_logger().info("Navigate Service Node initialized.")
         self.get_logger().info("Service 'avfl/navigate' is ready.")
-        self.get_logger().info("Waiting for pose data from /ap/pose/filtered/enu...")
+        self.get_logger().info("Waiting for pose data from /ap/pose/filtered...")
 
     def pose_callback(self, msg: PoseStamped):
         """Handle local pose updates from ArduPilot EKF."""
@@ -317,6 +329,9 @@ class NavigateServiceNode(Node):
             self.nav_speed = min(request.speed if request.speed > 0 else 0.5, self.max_velocity)
             self.is_navigating = True
 
+        # Broadcast navigate_target static TF so telemetry queries work
+        self.broadcast_navigate_target(self.target_position)
+
         response.success = True
         response.message = (
             f"Navigation started to ({self.target_position['x']:.2f}, "
@@ -325,6 +340,18 @@ class NavigateServiceNode(Node):
         )
         
         return response
+
+    def broadcast_navigate_target(self, target):
+        """Broadcast navigate_target TF frame at the current target position."""
+        t = TransformStamped()
+        # Static TF: stamp=0 means valid at all times (avoids sim_time mismatch)
+        t.header.frame_id = 'odom'
+        t.child_frame_id = 'navigate_target'
+        t.transform.translation.x = target['x']
+        t.transform.translation.y = target['y']
+        t.transform.translation.z = target['z']
+        t.transform.rotation.w = 1.0  # Identity rotation
+        self.tf_broadcaster.sendTransform(t)
 
     def control_loop(self):
         """Control loop for position-based navigation."""

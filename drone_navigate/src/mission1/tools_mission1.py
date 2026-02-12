@@ -14,6 +14,7 @@ from drone_navigate.srv import Navigate, GetTelemetry, SetYawRate
 from std_srvs.srv import Trigger, SetBool
 from ardupilot_msgs.srv import ModeSwitch
 import colorful as cf
+from rclpy.callback_groups import ReentrantCallbackGroup
 
 # ArduPilot flight modes
 COPTER_MODE_LAND = 9
@@ -22,6 +23,11 @@ COPTER_MODE_GUIDED = 4
 class Tools(Node):
     def __init__(self) -> None:
         super().__init__('tools_mission1_node')
+
+        # Callback groups for MultiThreadedExecutor
+        self.service_cb_group = ReentrantCallbackGroup()
+        self.client_cb_group = ReentrantCallbackGroup()
+
         self.fsm = Searching()
         self.start_mission = False
         self.mission_running = False
@@ -52,7 +58,9 @@ class Tools(Node):
             req = SetBool.Request()
             req.data = True
             future = self.activate_camera.call_async(req)
-            rclpy.spin_until_future_complete(self, future, timeout_sec=3.0)
+            start = time.time()
+            while not future.done() and (time.time() - start) < 3.0:
+                time.sleep(0.05)
             if future.done():
                 self.get_logger().info('Camera activated successfully')
             else:
@@ -78,15 +86,22 @@ class Tools(Node):
         None
 
     def setClients(self):
-        self.navigate = self.create_client(Navigate, 'avfl/navigate')
-        self.set_yaw_rate = self.create_client(SetYawRate, 'avfl/set_yaw_rate')
-        self.get_telemetry = self.create_client(GetTelemetry, 'avfl/get_telemetry')
-        self.mode_switch = self.create_client(ModeSwitch, '/ap/mode_switch')        
+        self.navigate = self.create_client(Navigate, 'avfl/navigate', callback_group=self.client_cb_group)
+        self.set_yaw_rate = self.create_client(SetYawRate, 'avfl/set_yaw_rate', callback_group=self.client_cb_group)
+        self.get_telemetry = self.create_client(GetTelemetry, 'avfl/get_telemetry', callback_group=self.client_cb_group)
+        self.mode_switch = self.create_client(ModeSwitch, '/ap/mode_switch', callback_group=self.client_cb_group)        
         
 
     def setServer(self):
-        self.create_service(Trigger, '/start_mission1', self.start_mission_callback)
-        
+        self.create_service(Trigger, '/start_mission1', self.start_mission_callback, callback_group=self.service_cb_group)
+
+    def wait_for_future(self, future, timeout_sec=10.0):
+        """Wait for a future to complete without blocking the executor."""
+        start = time.time()
+        while not future.done() and (time.time() - start) < timeout_sec:
+            time.sleep(0.05)
+        return future.done()
+
     def start_mission_callback(self, request, response):
         self.mission_running = True
         
@@ -192,7 +207,7 @@ class Tools(Node):
         start_time = time.time()
         
         while rclpy.ok() and (time.time() - start_time) < timeout:
-            # Check if we still see markers
+            # Check if we still see markers (callbacks processed by MultiThreadedExecutor)
             if not self.is_detection_recent():
                 self.get_logger().warn("Lost ArUco detection during centering")
                 return False
@@ -208,7 +223,7 @@ class Tools(Node):
                 return True
             
             # Calculate correction based on gate error
-            # gate_error.x > 0 means gate is to the right -> move right (positive Y in body frame)
+            # gate_error.x > 0 means gate is to the right -> move right (negative Y in body frame, since Y+ = left)
             # gate_error.y > 0 means gate is below -> move down (negative Z in body frame)
             error_x = self.gate_error.x
             error_y = self.gate_error.y
@@ -219,8 +234,8 @@ class Tools(Node):
                 continue
             
             # Calculate corrections with proportional gain
-            # Note: In body frame, Y is left/right, Z is up/down
-            correction_y = error_x * self.centering_gain_x  # Lateral correction
+            # Note: In body frame, Y+ is LEFT, so negate error_x to move toward the gate
+            correction_y = -error_x * self.centering_gain_x  # Lateral correction
             correction_z = -error_y * self.centering_gain_y  # Vertical correction
             
             # Limit correction magnitude
@@ -268,8 +283,7 @@ class Tools(Node):
         start_time = time.time()
         
         while rclpy.ok() and (time.time() - start_time) < timeout:
-            # Spin to get latest data
-            rclpy.spin_once(self, timeout_sec=0.05)
+            # Callbacks processed automatically by MultiThreadedExecutor
             
             # Check if we now see all 4 markers
             if self.marker_count >= 4:
@@ -297,7 +311,8 @@ class Tools(Node):
                 return True
             
             # Calculate correction (X axis only)
-            correction_y = error_x * self.centering_gain_x
+            # Body Y+ = LEFT, so negate to move toward gate (right)
+            correction_y = -error_x * self.centering_gain_x
             
             # Limit correction magnitude
             max_correction = 0.3
@@ -337,7 +352,7 @@ class Tools(Node):
         self.get_logger().info(f"Searching for gate (distance={search_distance}m)...")
         
         # First check if we already see at least 2 markers before moving
-        rclpy.spin_once(self, timeout_sec=0.1)
+        time.sleep(0.1)  # Brief wait for callbacks to be processed
         self.get_logger().info(f"Initial marker count: {self.marker_count}")
         if self.marker_count >= 2:
             self.get_logger().info(f"At least 2 markers already visible ({self.marker_count})! Stopping search.")
@@ -355,7 +370,7 @@ class Tools(Node):
             self.get_logger().info(f"Searching {direction_name}...")
             
             # Check before starting movement
-            rclpy.spin_once(self, timeout_sec=0.1)
+            time.sleep(0.1)
             if self.marker_count >= 2:
                 self.get_logger().info(f"At least 2 markers detected ({self.marker_count})! Stopping search.")
                 self._stop_drone()
@@ -377,7 +392,7 @@ class Tools(Node):
             elif result == 'reached':
                 self.get_logger().info(f"Reached end of {direction_name} search, continuing...")
             else:
-                self.get_logger().warn(f"Navigation issue during {direction_name}: {result}")
+                self.get_logger().warn(f"Navigation issue durinnavigateIng {direction_name}: {result}")
         
         self.get_logger().warn("Search completed without finding gate")
         return False
@@ -403,7 +418,7 @@ class Tools(Node):
         try:
             # Wait for navigate service
             if not self.navigate.wait_for_service(timeout_sec=5.0):
-                self.get_logger().error("Navigate service not available")
+                self.get_logger().error("Navigate sernavigateIvice not available")
                 return 'error'
             
             req = Navigate.Request()
@@ -423,8 +438,7 @@ class Tools(Node):
             # Wait for service call to complete while checking markers
             start_time = time.time()
             while not future.done():
-                # CRITICAL: Spin to process ArUco callbacks
-                rclpy.spin_once(self, timeout_sec=0.02)
+                # Callbacks are processed by MultiThreadedExecutor automatically
                 
                 # Check for markers
                 if self.marker_count >= min_markers:
@@ -436,7 +450,7 @@ class Tools(Node):
                     self.get_logger().warn("Navigate service call timeout")
                     return 'timeout'
                 
-                time.sleep(0.01)
+                time.sleep(0.02)
             
             res = future.result()
             if not res or not res.success:
@@ -452,19 +466,17 @@ class Tools(Node):
                 estimated_time = abs(y) / speed if speed > 0 else 10.0
                 monitor_start = time.time()
                 while (time.time() - monitor_start) < (estimated_time + 2.0):
-                    rclpy.spin_once(self, timeout_sec=0.02)
                     if self.marker_count >= min_markers:
                         self.get_logger().info(f"*** MARKERS FOUND! Count: {self.marker_count} ***")
                         self._stop_drone()
                         return 'markers_found'
-                    time.sleep(0.02)
+                    time.sleep(0.04)
                 return 'reached'
             
             # Monitor navigation with interruption for markers
             nav_start = time.time()
             while (time.time() - nav_start) < timeout:
-                # CRITICAL: Spin frequently to get ArUco updates
-                rclpy.spin_once(self, timeout_sec=0.02)
+                # Callbacks are processed by MultiThreadedExecutor automatically
                 
                 # Check for markers - this is the interrupt condition
                 if self.marker_count >= min_markers:
@@ -477,11 +489,9 @@ class Tools(Node):
                 telem_req.frame_id = 'navigate_target'
                 telem_future = self.get_telemetry.call_async(telem_req)
                 
-                # Wait for telemetry with frequent spinning
+                # Wait for telemetry response
                 telem_start = time.time()
                 while not telem_future.done():
-                    rclpy.spin_once(self, timeout_sec=0.02)
-                    
                     # Keep checking markers while waiting for telemetry!
                     if self.marker_count >= min_markers:
                         self.get_logger().info(f"*** MARKERS FOUND while getting telemetry! Count: {self.marker_count} ***")
@@ -490,7 +500,7 @@ class Tools(Node):
                     
                     if time.time() - telem_start > 2.0:
                         break
-                    time.sleep(0.01)
+                    time.sleep(0.02)
                 
                 if telem_future.done():
                     telem = telem_future.result()
@@ -532,7 +542,7 @@ class Tools(Node):
             # Wait briefly for the stop command
             start_time = time.time()
             while not future.done() and (time.time() - start_time) < 2.0:
-                rclpy.spin_once(self, timeout_sec=0.05)
+                time.sleep(0.05)
             
             self.get_logger().info("Stop command sent")
         
@@ -586,7 +596,7 @@ class Tools(Node):
                 # First, center laterally on the 2 visible markers
                 error_x = self.gate_error.x
                 if not math.isnan(error_x) and abs(error_x) > 0.2:
-                    correction_y = error_x * 0.4
+                    correction_y = -error_x * 0.4
                     correction_y = max(-0.3, min(0.3, correction_y))
                     self.get_logger().info(f"Centering on visible markers: Y={correction_y:.2f}m")
                     self.navigateWait(x=0, y=correction_y, z=0, speed=0.2, 
@@ -637,7 +647,7 @@ class Tools(Node):
             
             # General alignment correction
             if abs(error_x) > 0.1:
-                correction_y = error_x * 0.5
+                correction_y = -error_x * 0.5
                 correction_y = max(-0.5, min(0.5, correction_y))
                 
                 self.get_logger().info(f"Alignment correction: Y={correction_y:.2f}m")
@@ -749,8 +759,18 @@ class Tools(Node):
                 self.get_logger().error("GetTelemetry service not available")
                 return res
             
+            # Calculate a reasonable navigation timeout based on distance and speed
+            nav_distance = math.sqrt(float(x)**2 + float(y)**2 + float(z)**2)
+            nav_timeout = max(10.0, (nav_distance / max(speed, 0.1)) * 3.0 + 5.0)
+            nav_start = time.time()
+            
             # Monitor navigation progress
             while True:
+                # Safety timeout for navigation monitoring
+                if time.time() - nav_start > nav_timeout:
+                    self.get_logger().warn(f"NavigateWait global timeout ({nav_timeout:.1f}s) reached")
+                    return res
+                
                 telem_req = GetTelemetry.Request()
                 telem_req.frame_id = 'navigate_target'
                 telem_future = self.get_telemetry.call_async(telem_req)
@@ -769,6 +789,10 @@ class Tools(Node):
                 telem = telem_future.result()
                 
                 distance = math.sqrt(telem.x ** 2 + telem.y ** 2 + telem.z ** 2)
+                self.get_logger().info(
+                    f"NavigateWait: distance={distance:.3f}, telem=({telem.x:.3f}, {telem.y:.3f}, {telem.z:.3f}), frame={telem.frame_id}",
+                    throttle_duration_sec=2.0
+                )
                 if distance < tolerance:
                     self.get_logger().info("Target reached")
                     return res
@@ -890,7 +914,10 @@ class Tools(Node):
             telem_req = GetTelemetry.Request()
             telem_req.frame_id = 'map'
             initial_future = self.get_telemetry.call_async(telem_req)
-            rclpy.spin_until_future_complete(self, initial_future)
+            self.wait_for_future(initial_future, timeout_sec=5.0)
+            if not initial_future.done():
+                self.get_logger().error('Telemetry timeout')
+                return None
             initial = initial_future.result()
             
             if frame_id == "body":
@@ -905,7 +932,8 @@ class Tools(Node):
                 telem_req = GetTelemetry.Request()
                 telem_req.frame_id = 'map'
                 diff_future = self.get_telemetry.call_async(telem_req)
-                rclpy.spin_until_future_complete(self, diff_future)
+                if not self.wait_for_future(diff_future, timeout_sec=2.0):
+                    continue
                 diff = diff_future.result()
                 
                 diff.x, diff.y, diff.z = (diff.x - initial.x), (diff.y - initial.y), (diff.z - initial.z)
@@ -928,7 +956,10 @@ class Tools(Node):
                 telem_req = GetTelemetry.Request()
                 telem_req.frame_id = 'map'
                 initial_future = self.get_telemetry.call_async(telem_req)
-                rclpy.spin_until_future_complete(self, initial_future)
+                self.wait_for_future(initial_future, timeout_sec=5.0)
+                if not initial_future.done():
+                    self.get_logger().error('Telemetry timeout')
+                    return None
                 initial = initial_future.result()
                 
                 if frame_id == "body":
@@ -943,7 +974,8 @@ class Tools(Node):
                     telem_req = GetTelemetry.Request()
                     telem_req.frame_id = 'map'
                     diff_future = self.get_telemetry.call_async(telem_req)
-                    rclpy.spin_until_future_complete(self, diff_future)
+                    if not self.wait_for_future(diff_future, timeout_sec=2.0):
+                        continue
                     diff = diff_future.result()
                     
                     diff.x, diff.y, diff.z = (initial.x - diff.x), (initial.y - diff.y), (initial.z - diff.z)
