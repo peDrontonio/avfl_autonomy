@@ -40,8 +40,8 @@ CAMERA_MATRIX = np.array([
 DIST_COEFFS = np.zeros((4, 1))
 
 # Detection thresholds
-CENTERING_THRESHOLD_X = 0.05  # meters - how close to center in X
-CENTERING_THRESHOLD_Y = 0.05  # meters - how close to center in Y
+CENTERING_THRESHOLD_X = 0.08  # meters - how close to center in X
+CENTERING_THRESHOLD_Y = 0.08  # meters - how close to center in Y
 MIN_DISTANCE_THRESHOLD = 0.5  # meters - minimum safe distance to gate
 
 
