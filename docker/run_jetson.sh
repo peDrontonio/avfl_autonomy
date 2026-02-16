@@ -42,11 +42,14 @@ echo "Usage tips:"
 echo "  - Attach to container: ./run_jetson.sh exec"
 echo "=========================================="
 
-docker run -it --rm \
+echo "Detached..."
+
+docker run -d \
     --name ${CONTAINER_NAME} \
+    --restart unless-stopped \
     --net=host \
     --privileged \
     -v /dev:/dev \
     -v "${WORKSPACE_DIR}/drone_navigate:/root/avfl_ws/src/drone_navigate:rw" \
     ${IMAGE_NAME}:${IMAGE_TAG} \
-    "$@"
+    tail -f /dev/null # Mantém o container vivo sem fechar

@@ -73,6 +73,12 @@ RUN pip3 install --no-cache-dir \
     MAVProxy \
     pyserial
 
+RUN pip3 install --no-cache-dir \
+    ultralytics \
+    torch \
+    torchvision
+
+
 # 3. Initialize MAVROS GeographicLib Datasets (required for GPS operations)
 RUN wget https://raw.githubusercontent.com/mavlink/mavros/master/mavros/scripts/install_geographiclib_datasets.sh \
     && chmod +x install_geographiclib_datasets.sh \
