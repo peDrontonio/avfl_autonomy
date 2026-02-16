@@ -28,6 +28,11 @@ class Tools(Node):
         self.fsm = GoingToBase()
         self.mission_running = False
         
+        # Safety: search attempt counters for RTL
+        self.search_attempts = 0
+        self.scan_attempts = 0
+        self.max_search_attempts = 3  # Máximo de tentativas antes de RTL
+        
         # YOLO detection parameters
         self.base_detected = False
         self.detection_confidence = 0.0
@@ -157,6 +162,26 @@ class Tools(Node):
         # print("DEBUG - Offsets: ")
         # print(offset_x, offset_y)
         return offset_y <= tolerance 
+
+    def return_base(self):
+        '''Activate RTL (Return to Base) mode - safety measure'''
+        self.get_logger().warn("⚠" * 30)
+        self.get_logger().warn("SAFETY: Ativando Return Base!")
+        self.get_logger().warn("⚠" * 30)
+        req = ModeSwitch.Request()
+        req.mode = 6  # RTL mode
+        future = self.land_client.call_async(req)
+        if self.wait_for_future(future, timeout_sec=5.0):
+            result = future.result()
+            if result.status:
+                self.get_logger().info("RTL mode activated successfully")
+                return True
+            else:
+                self.get_logger().error("Failed to activate RTL mode")
+                return False
+        else:
+            self.get_logger().error("RTL service call timeout")
+            return False
 
     def land(self):
         '''Land the drone by switching to LAND mode'''

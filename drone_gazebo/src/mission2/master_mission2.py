@@ -59,9 +59,19 @@ class MasterMission2(Tools):
         # Search_Base State
         if self.fsm == 'Search_Base':
             self.current_state = 'Search_Base'
+            self.search_attempts += 1
             self.get_logger().info("=" * 60)
-            self.get_logger().info("ESTADO - Search_Base")
+            self.get_logger().info(f"ESTADO - Search_Base (tentativa {self.search_attempts}/{self.max_search_attempts})")
             self.get_logger().info("=" * 60)
+            
+            # Safety: check if max attempts exceeded
+            if self.search_attempts > self.max_search_attempts:
+                self.get_logger().warn(f"Search_Base: {self.max_search_attempts} tentativas esgotadas! Acionando RTL...")
+                self.current_state = ''
+                self.fsm.add('rtl')
+                self.fsm.updateEvent()
+                return
+            
             self.get_logger().info("Searching for mobile base with camera...")
 
             # Start search pattern - move laterally while looking for base
@@ -80,15 +90,27 @@ class MasterMission2(Tools):
 
         if self.fsm == 'Scan_for_Base':
             self.current_state = 'Scan_for_Base'
+            self.scan_attempts += 1
             self.get_logger().info("=" * 60)
-            self.get_logger().info("ESTADO - Scan_for_Base")
+            self.get_logger().info(f"ESTADO - Scan_for_Base (tentativa {self.scan_attempts}/{self.max_search_attempts})")
             self.get_logger().info("=" * 60)
+            
+            # Safety: check if max attempts exceeded
+            if self.scan_attempts > self.max_search_attempts:
+                self.get_logger().warn(f"Scan_for_Base: {self.max_search_attempts} tentativas esgotadas! Acionando RTL...")
+                self.current_state = ''
+                self.fsm.add('rtl')
+                self.fsm.updateEvent()
+                return
+            
             self.get_logger().info("Base lost, attempting to reacquire...")
             
             if self.last_base_coordinates is None:
-                self.get_logger().error("Base never detected. Cannot recover. Landing...")
-                self.land()
-                self.mission_running = False
+                self.get_logger().error("Base never detected. Cannot recover. Acionando Return Base...")
+                self.return_base()
+                self.current_state = ''
+                self.fsm.add('rtl')
+                self.fsm.updateEvent()
                 return
             
             # Return to last known base position
@@ -162,6 +184,22 @@ class MasterMission2(Tools):
                     time.sleep(0.1)
             except Exception as e:
                 self.get_logger().error(f"Error during landing: {e}")
+        
+        # ReturnBase State (Safety)
+        elif self.fsm == 'ReturnBase':
+            self.current_state = 'ReturnBase'
+            self.get_logger().warn("=" * 60)
+            self.get_logger().warn("ESTADO - ReturnBase (SAFETY)")
+            self.get_logger().warn("=" * 60)
+            self.get_logger().warn(f"Base não encontrada após múltiplas tentativas.")
+            self.get_logger().warn(f"(Search: {self.search_attempts}, Scan: {self.scan_attempts})")
+            self.get_logger().warn("Acionando Return Base para segurança do drone!")
+            
+            self.return_base()
+            
+            self.current_state = ''
+            self.fsm.add('rtl_activated')
+            self.mission_running = False
             
         # Atualiza o estado da FSM interna
         if self.fsm != self.current_state:
