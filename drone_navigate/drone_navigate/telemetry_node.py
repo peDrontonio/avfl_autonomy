@@ -20,7 +20,7 @@ from geometry_msgs.msg import PoseStamped, TwistStamped
 from geographic_msgs.msg import GeoPoseStamped
 from sensor_msgs.msg import BatteryState
 from ardupilot_msgs.msg import GlobalPosition
-from mavros_msgs.msg import State
+from ardupilot_msgs.msg import Status as APStatus
 from std_msgs.msg import String as RosString
 from drone_navigate.srv import GetTelemetry
 
@@ -62,9 +62,9 @@ class TelemetryNode(Node):
     ROS 2 Node that provides telemetry service for ArduPilot drones.
     
     Subscribes to:
-        - /ap/pose/filtered/enu: Local position from EKF (NED→ENU converted)
-        - /ap/geopose/filtered/enu: Global GPS position (NED→ENU converted)
-        - /ap/twist/filtered/enu: Velocity data (NED→ENU converted)
+        - /ap/pose/filtered: Local position from EKF
+        - /ap/geopose/filtered: Global GPS position
+        - /ap/twist/filtered or velocity topics: Velocity data
         
     Provides:
         - avfl/get_telemetry: Service to get drone state relative to any TF frame
@@ -89,8 +89,8 @@ class TelemetryNode(Node):
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
         # --- State Variables ---
-        self.current_pose = None          # PoseStamped from /ap/pose/filtered/enu
-        self.current_geopose = None       # GeoPoseStamped from /ap/geopose/filtered/enu
+        self.current_pose = None          # PoseStamped from /ap/pose/filtered
+        self.current_geopose = None       # GeoPoseStamped from /ap/geopose/filtered
         self.current_velocity = None      # TwistStamped from velocity topic
         self.current_battery = None       # BatteryState from /ap/battery
         self.current_state = None         # State from /ap/state
@@ -101,28 +101,28 @@ class TelemetryNode(Node):
         self.velocity_received = False
 
         # --- Subscribers (in callback group for concurrency) ---
-        # Local pose (EKF filtered position in local frame, converted to ENU)
+        # Local pose (EKF filtered position in local frame)
         self.pose_sub = self.create_subscription(
             PoseStamped,
-            '/ap/pose/filtered/enu',
+            '/ap/pose/filtered',
             self.pose_callback,
             qos,
             callback_group=self.callback_group
         )
 
-        # Global geopose (GPS coordinates, orientation converted to ENU)
+        # Global geopose (GPS coordinates)
         self.geopose_sub = self.create_subscription(
             GeoPoseStamped,
-            '/ap/geopose/filtered/enu',
+            '/ap/geopose/filtered',
             self.geopose_callback,
             qos,
             callback_group=self.callback_group
         )
 
-        # Velocity (converted to ENU)
+        # Velocity (try different topic names ArduPilot might use)
         self.velocity_sub = self.create_subscription(
             TwistStamped,
-            '/ap/twist/filtered/enu',
+            '/ap/twist/filtered',
             self.velocity_callback,
             qos,
             callback_group=self.callback_group
@@ -137,12 +137,19 @@ class TelemetryNode(Node):
             callback_group=self.callback_group
         )
 
-        # FCU state (connected, armed, mode)
+        # FCU status (armed, mode, flying, failsafe)
+        # ArduPilot publishes /ap/status with RELIABLE + TRANSIENT_LOCAL QoS
+        status_qos = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1
+        )
         self.state_sub = self.create_subscription(
-            State,
-            '/ap/state',
+            APStatus,
+            '/ap/status',
             self.state_callback,
-            qos,
+            status_qos,
             callback_group=self.callback_group
         )
 
@@ -182,8 +189,8 @@ class TelemetryNode(Node):
         """Handle battery state updates."""
         self.current_battery = msg
 
-    def state_callback(self, msg: State):
-        """Handle FCU state updates."""
+    def state_callback(self, msg: APStatus):
+        """Handle FCU status updates from ArduPilot DDS."""
         self.current_state = msg
 
     def get_telemetry_callback(self, request, response):
@@ -205,10 +212,12 @@ class TelemetryNode(Node):
         response.frame_id = target_frame
 
         # --- Get State (connected, armed, mode) ---
+        # ardupilot_msgs/msg/Status has: armed (bool), mode (uint8), flying (bool)
+        # If we've received a status message, the drone is connected.
         if self.current_state is not None:
-            response.connected = self.current_state.connected
+            response.connected = True
             response.armed = self.current_state.armed
-            response.mode = self.current_state.mode
+            response.mode = str(self.current_state.mode)
         else:
             response.connected = False
             response.armed = False

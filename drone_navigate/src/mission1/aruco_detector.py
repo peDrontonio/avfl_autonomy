@@ -180,6 +180,14 @@ class ArucoDetectorNode(Node):
         count_msg.data = num_markers
         self.marker_count_pub.publish(count_msg)
         
+        # Publish detected marker IDs as bit flags
+        ids_msg = Int32()
+        ids_bits = 0
+        for mid in gate_markers:
+            ids_bits |= (1 << int(mid))
+        ids_msg.data = int(ids_bits)
+        self.marker_ids_pub.publish(ids_msg)
+        
         # Publish gate visibility
         gate_visible_msg = Bool()
         gate_visible_msg.data = num_markers > 0

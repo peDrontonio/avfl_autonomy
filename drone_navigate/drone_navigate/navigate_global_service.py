@@ -14,12 +14,13 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPo
 from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, TransformStamped
 from geographic_msgs.msg import GeoPoseStamped
 from ardupilot_msgs.msg import GlobalPosition
 from ardupilot_msgs.srv import ArmMotors, ModeSwitch
 from drone_navigate.srv import NavigateGlobal
 
+import tf2_ros
 import math
 import time
 import threading
@@ -95,8 +96,8 @@ class NavigateGlobalServiceNode(Node):
     providing more precise navigation than velocity-based control.
     
     Subscribes to:
-        - /ap/geopose/filtered/enu: Current GPS position (NED→ENU converted)
-        - /ap/pose/filtered/enu: Local pose for altitude reference (NED→ENU converted)
+        - /ap/geopose/filtered: Current GPS position
+        - /ap/pose/filtered: Local pose for altitude reference
         
     Publishes to:
         - /ap/cmd_gps_pose: GPS waypoint commands
@@ -147,14 +148,19 @@ class NavigateGlobalServiceNode(Node):
         self.target_yaw_rate = None  # Max yaw rate
         self.nav_speed = 2.0
         self.is_navigating = False
+        self.target_local = None  # Local (map) frame target for TF broadcast
         
         # Thread lock for state variables
         self.state_lock = threading.Lock()
 
-        # --- Subscribers (using ENU-converted topics) ---
+        # --- TF Broadcaster for navigate_target frame ---
+        # Static TF is time-independent, avoids sim_time vs wall_clock mismatch
+        self.tf_broadcaster = tf2_ros.StaticTransformBroadcaster(self)
+
+        # --- Subscribers ---
         self.geopose_sub = self.create_subscription(
             GeoPoseStamped,
-            '/ap/geopose/filtered/enu',
+            '/ap/geopose/filtered',
             self.geopose_callback,
             qos,
             callback_group=self.sub_callback_group
@@ -162,7 +168,7 @@ class NavigateGlobalServiceNode(Node):
 
         self.pose_sub = self.create_subscription(
             PoseStamped,
-            '/ap/pose/filtered/enu',
+            '/ap/pose/filtered',
             self.pose_callback,
             qos,
             callback_group=self.sub_callback_group
@@ -204,7 +210,7 @@ class NavigateGlobalServiceNode(Node):
 
         self.get_logger().info("Navigate Global Service Node initialized.")
         self.get_logger().info("Service 'avfl/navigate_global' is ready.")
-        self.get_logger().info("Waiting for GPS data from /ap/geopose/filtered/enu...")
+        self.get_logger().info("Waiting for GPS data from /ap/geopose/filtered...")
 
     def geopose_callback(self, msg: GeoPoseStamped):
         """Handle global geopose updates."""
@@ -317,17 +323,27 @@ class NavigateGlobalServiceNode(Node):
             # Relative altitude: add z to current altitude
             target_alt = current_gps['alt'] + request.z
         else:
-            # Absolute altitude or default
-            if request.z > 0:
-                target_alt = current_gps['alt'] + request.z  # Treat as relative by default
-            else:
-                target_alt = current_gps['alt']  # Keep current altitude
+            # Absolute altitude (for 'map' frame or default)
+            target_alt = request.z
 
         # Set target
         with self.state_lock:
             self.target_lat = request.lat
             self.target_lon = request.lon
             self.target_alt = target_alt
+            
+            # Compute approximate local target for TF broadcast
+            if self.current_pose is not None:
+                curr_lat_rad = math.radians(current_gps['lat'])
+                east_offset = (request.lon - current_gps['lon']) * 111320.0 * math.cos(curr_lat_rad)
+                north_offset = (request.lat - current_gps['lat']) * 111320.0
+                self.target_local = {
+                    'x': self.current_pose.pose.position.x + east_offset,
+                    'y': self.current_pose.pose.position.y + north_offset,
+                    'z': target_alt
+                }
+            else:
+                self.target_local = None
             
             # Set target yaw: only if both yaw AND yaw_rate are specified
             if request.yaw != 0 and request.yaw_rate > 0:
@@ -340,6 +356,18 @@ class NavigateGlobalServiceNode(Node):
             
             self.nav_speed = request.speed if request.speed > 0 else self.default_speed
             self.is_navigating = True
+
+        # Broadcast navigate_target static TF so telemetry queries work
+        if self.target_local is not None:
+            t = TransformStamped()
+            # Static TF: stamp=0 means valid at all times (avoids sim_time mismatch)
+            t.header.frame_id = 'odom'
+            t.child_frame_id = 'navigate_target'
+            t.transform.translation.x = self.target_local['x']
+            t.transform.translation.y = self.target_local['y']
+            t.transform.translation.z = self.target_local['z']
+            t.transform.rotation.w = 1.0
+            self.tf_broadcaster.sendTransform(t)
 
         # Calculate distance for info
         distance_m = haversine_distance(
@@ -407,6 +435,7 @@ class NavigateGlobalServiceNode(Node):
             target_lat = self.target_lat
             target_lon = self.target_lon
             target_alt = self.target_alt
+            target_local = self.target_local
 
         # Calculate horizontal distance
         horiz_distance = haversine_distance(curr_lat, curr_lon, target_lat, target_lon)

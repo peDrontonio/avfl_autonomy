@@ -40,6 +40,7 @@ import time
 import numpy as np
 import rclpy
 from rclpy.node import Node
+from rclpy.executors import MultiThreadedExecutor
 from drone_navigate.srv import GetTelemetry, Navigate
 from mavros_msgs.srv import SetMode
 from geometry_msgs.msg import PoseStamped
@@ -87,9 +88,8 @@ class MasterMission1(Tools):
             print(cf.blue("=" * 50))
             print(cf.yellow("Looking for gate markers..."))
             
-            # Spin multiple times to ensure we get latest ArUco data
-            for _ in range(10):
-                rclpy.spin_once(self, timeout_sec=0.05)
+            # Brief wait to ensure latest ArUco data is processed
+            time.sleep(0.2)
             
             # Check if we already see all 4 markers
             print(cf.yellow(f"Current marker count: {self.marker_count}"))
@@ -118,8 +118,8 @@ class MasterMission1(Tools):
                 search_speed=self.search_speed
             )
             
-            # Spin again to get latest data after search
-            rclpy.spin_once(self, timeout_sec=0.1)
+            # Brief wait for latest data after search
+            time.sleep(0.1)
             
             if self.marker_count >= 4:
                 print(cf.green(f"All markers found! Markers: {self.marker_count}"))
@@ -142,8 +142,7 @@ class MasterMission1(Tools):
             print(cf.yellow(f"Markers visible: {self.marker_count}/4"))
             print(cf.yellow(f"Detected IDs: {self.get_detected_marker_ids()}"))
             
-            # Spin to get latest data
-            rclpy.spin_once(self, timeout_sec=0.1)
+            # Callbacks processed by MultiThreadedExecutor automatically
             
             # Check if all 4 markers are now visible
             if self.marker_count >= 4:
@@ -166,7 +165,7 @@ class MasterMission1(Tools):
             centered = self.partialCenterOnGate(timeout=15.0)
             
             # Check again after centering
-            rclpy.spin_once(self, timeout_sec=0.1)
+            time.sleep(0.1)
             
             if self.marker_count >= 4:
                 print(cf.green("All markers visible after partial centering!"))
@@ -191,8 +190,7 @@ class MasterMission1(Tools):
             print(cf.yellow(f"Markers visible: {self.marker_count}/4"))
             print(cf.yellow(f"Detected IDs: {self.get_detected_marker_ids()}"))
             
-            # Spin to get latest data
-            rclpy.spin_once(self, timeout_sec=0.1)
+            # Callbacks processed by MultiThreadedExecutor automatically
             
             # Check if all markers are already visible
             if self.marker_count >= 4:
@@ -214,8 +212,8 @@ class MasterMission1(Tools):
             # Try to align to see all markers (adjust based on detected marker pair)
             aligned = self.alignToGate(timeout=20.0)
             
-            # Spin to get latest data after alignment
-            rclpy.spin_once(self, timeout_sec=0.1)
+            # Brief wait for latest data after alignment
+            time.sleep(0.1)
             
             if self.marker_count >= 4:
                 print(cf.green("Alignment complete! All markers visible!"))
@@ -241,8 +239,7 @@ class MasterMission1(Tools):
             print(cf.yellow(f"Gate error: X={self.gate_error.x:.3f}, Y={self.gate_error.y:.3f}"))
             print(cf.yellow(f"Markers visible: {self.marker_count}/4"))
             
-            # Spin to get latest data
-            rclpy.spin_once(self, timeout_sec=0.1)
+            # Callbacks processed by MultiThreadedExecutor automatically
             
             # Stop completely before starting centering
             print(cf.yellow("Stopping before centering..."))
@@ -266,8 +263,8 @@ class MasterMission1(Tools):
             # Center on the gate (both X and Y)
             centered = self.centerOnGate(timeout=30.0)
             
-            # Spin to get latest data after centering
-            rclpy.spin_once(self, timeout_sec=0.1)
+            # Brief wait for latest data after centering
+            time.sleep(0.1)
             
             # VERIFY BOTH CONDITIONS: 4 markers visible AND centered
             if self.marker_count >= 4 and (centered or self.check_centered()):
@@ -300,8 +297,7 @@ class MasterMission1(Tools):
             print(cf.blue("=" * 50))
             print(cf.yellow("Flying through the gate..."))
             
-            # Spin to get latest data
-            rclpy.spin_once(self, timeout_sec=0.1)
+            # Callbacks processed by MultiThreadedExecutor automatically
             
             # VERIFY before advancing: should still see markers and be centered
             if self.marker_count >= 4 and not self.check_centered():
@@ -358,8 +354,10 @@ class MasterMission1(Tools):
 def main(args=None): 
     rclpy.init(args=args)
     mestre = MasterMission1()
+    executor = MultiThreadedExecutor(num_threads=4)
+    executor.add_node(mestre)
     try:
-        rclpy.spin(mestre)
+        executor.spin()
     except KeyboardInterrupt:
         pass
     finally:
