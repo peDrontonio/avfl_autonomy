@@ -1,6 +1,16 @@
 from FSM import State
 import colorful as cf
 
+class Takeoff(State):
+    def __init__(self, name="") -> None:
+        super().__init__(name)
+    
+    def event(self):
+        # Transition to GoingToBase when takeoff is complete
+        if self.tail('takeoff_complete'):
+            return GoingToBase
+        return self
+
 class GoingToBase(State):
     def __init__(self, name="") -> None:
         super().__init__(name)

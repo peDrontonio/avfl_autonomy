@@ -47,6 +47,12 @@ install(DIRECTORY
   DESTINATION share/${PROJECT_NAME}/
 )
 
+# Install rviz configs
+install(DIRECTORY
+  rviz
+  DESTINATION share/${PROJECT_NAME}/
+)
+
 # Install Python scripts
 install(PROGRAMS
   scripts/aruco.py
@@ -84,6 +90,30 @@ install(DIRECTORY
   DESTINATION lib/${PROJECT_NAME}
   FILES_MATCHING 
   PATTERN "*.py"
+  PATTERN "__pycache__" EXCLUDE
+)
+
+# Install mission2 master node
+install(PROGRAMS
+  src/mission2/master_mission2.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME master_mission2
+)
+
+# Install mission2 yolo detector node
+install(PROGRAMS
+  src/mission2/yolo_base_detector.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME yolo_base_detector
+)
+
+# Install Python source modules (mission2 package)
+install(DIRECTORY
+  src/mission2
+  DESTINATION lib/${PROJECT_NAME}
+  FILES_MATCHING 
+  PATTERN "*.py"
+  PATTERN "*.pt"
   PATTERN "__pycache__" EXCLUDE
 )
 

@@ -1,17 +1,25 @@
 #!/usr/bin/python3
 import math
 import os
+import sys
 import time
+
+# Add mission2 package to path when running as installed executable
+script_dir = os.path.dirname(os.path.abspath(__file__))
+mission2_dir = os.path.join(script_dir, 'mission2')
+if os.path.exists(mission2_dir) and mission2_dir not in sys.path:
+    sys.path.insert(0, mission2_dir)
+
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from states import Search_Base, GoingToBase
+from states import Search_Base, GoingToBase, Takeoff
 from nav_msgs.msg import Odometry
 from mavros_msgs.srv import CommandBool
 from std_msgs.msg import Int32
 from drone_navigate.srv import Navigate, GetTelemetry, SetYawRate, NavigateGlobal
 from std_srvs.srv import Trigger, SetBool
-from ardupilot_msgs.srv import ModeSwitch
+from ardupilot_msgs.srv import ModeSwitch, ArmMotors, Takeoff as TakeoffSrv
 from drone_navigate.msg import BaseDetection
 import colorful as cf
 from collections import deque
@@ -25,7 +33,7 @@ class Tools(Node):
         self.service_cb_group = ReentrantCallbackGroup()
         self.client_cb_group = ReentrantCallbackGroup()
 
-        self.fsm = GoingToBase()
+        self.fsm = Takeoff()
         self.mission_running = False
         
         # Safety: search attempt counters for RTL
@@ -84,7 +92,10 @@ class Tools(Node):
         self.navigate = self.create_client(Navigate, 'avfl/navigate', callback_group=self.client_cb_group)
         self.navigate_global = self.create_client(NavigateGlobal, 'avfl/navigate_global', callback_group=self.client_cb_group)
         self.get_telemetry = self.create_client(GetTelemetry, 'avfl/get_telemetry', callback_group=self.client_cb_group)
-        self.land_client = self.create_client(ModeSwitch, '/ap/mode_switch', callback_group=self.client_cb_group)        
+        self.land_client = self.create_client(ModeSwitch, '/ap/mode_switch', callback_group=self.client_cb_group)
+        self.mode_switch_client = self.create_client(ModeSwitch, '/ap/mode_switch', callback_group=self.client_cb_group)
+        self.arm_client = self.create_client(ArmMotors, '/ap/arm_motors', callback_group=self.client_cb_group)
+        self.takeoff_client = self.create_client(TakeoffSrv, '/ap/experimental/takeoff', callback_group=self.client_cb_group)        
         
 
     def setServer(self):
@@ -263,6 +274,84 @@ class Tools(Node):
             time.sleep(0.2)
         
         return False
+
+    def takeoffWait(self, z, auto_arm=True):
+        '''Arm motors and takeoff to specified altitude'''
+        self.get_logger().info(f"Starting takeoff sequence to {z}m altitude...")
+                # Step 0: Switch to GUIDED mode
+        self.get_logger().info("Switching to GUIDED mode...")
+        mode_req = ModeSwitch.Request()
+        mode_req.mode = 4  # GUIDED mode
+        mode_future = self.mode_switch_client.call_async(mode_req)
+        
+        if self.wait_for_future(mode_future, timeout_sec=5.0):
+            mode_result = mode_future.result()
+            if mode_result.status:
+                self.get_logger().info("GUIDED mode activated")
+            else:
+                self.get_logger().error("Failed to switch to GUIDED mode")
+                return False
+        else:
+            self.get_logger().error("Mode switch service call timeout")
+            return False
+                # Step 1: Arm the motors
+        if auto_arm:
+            self.get_logger().info("Arming motors...")
+            arm_req = ArmMotors.Request()
+            arm_req.arm = True
+            arm_future = self.arm_client.call_async(arm_req)
+            
+            if self.wait_for_future(arm_future, timeout_sec=5.0):
+                arm_result = arm_future.result()
+                if arm_result.result:
+                    self.get_logger().info("Motors armed successfully!")
+                else:
+                    self.get_logger().error("Failed to arm motors")
+                    return False
+            else:
+                self.get_logger().error("Arm motors service call timeout")
+                return False
+        
+        # Step 2: Takeoff to specified altitude
+        self.get_logger().info(f"Taking off to {z}m...")
+        takeoff_req = TakeoffSrv.Request()
+        takeoff_req.alt = float(z)
+        takeoff_future = self.takeoff_client.call_async(takeoff_req)
+        
+        if self.wait_for_future(takeoff_future, timeout_sec=5.0):
+            takeoff_result = takeoff_future.result()
+            # Note: ArduPilot Takeoff service might not have a 'result' field
+            # Just check if service call completed
+            self.get_logger().info("Takeoff command sent, waiting for altitude...")
+            
+            # Wait until we reach the target altitude
+            start_time = time.time()
+            timeout = 30.0  # 30 seconds timeout
+            
+            while rclpy.ok() and (time.time() - start_time) < timeout:
+                telem_req = GetTelemetry.Request()
+                telem_req.frame_id = 'map'
+                telem_future = self.get_telemetry.call_async(telem_req)
+                
+                if self.wait_for_future(telem_future, timeout_sec=1.0):
+                    telem = telem_future.result()
+                    current_alt = telem.z
+                    
+                    self.get_logger().info(f"Current altitude: {current_alt:.2f}m / Target: {z:.2f}m", 
+                                         throttle_duration_sec=1.0)
+                    
+                    # Check if we've reached target altitude (within tolerance)
+                    if abs(current_alt - z) < 0.5:
+                        self.get_logger().info(f"Target altitude reached: {current_alt:.2f}m")
+                        return True
+                
+                time.sleep(0.2)
+            
+            self.get_logger().error("Timeout waiting for target altitude")
+            return False
+        else:
+            self.get_logger().error("Takeoff service call timeout")
+            return False
 
     def navigateGlobalWait(self, lat, lon, z, yaw=float('nan'), speed=0.5, tolerance=0.2, auto_arm=True):
         '''Navigate to GPS coordinates and wait until target is reached'''

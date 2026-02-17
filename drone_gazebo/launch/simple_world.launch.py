@@ -76,7 +76,7 @@ def generate_launch_description():
         package='rviz2',
         executable='rviz2',
         condition=IfCondition(LaunchConfiguration('rviz')),
-        arguments=['-d', rviz_config] if os.path.exists(rviz_config) else [],
+        arguments=['-d', rviz_config],
         output='screen',
         parameters=[{'use_sim_time': True}],
     )

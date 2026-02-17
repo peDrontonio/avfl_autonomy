@@ -1,7 +1,14 @@
 #!/usr/bin/python3
 import math
 import os
+import sys
 import time
+
+# Add mission2 package to path when running as installed executable
+script_dir = os.path.dirname(os.path.abspath(__file__))
+mission2_dir = os.path.join(script_dir, 'mission2')
+if os.path.exists(mission2_dir) and mission2_dir not in sys.path:
+    sys.path.insert(0, mission2_dir)
 
 import numpy as np
 import rclpy
@@ -31,6 +38,22 @@ class MasterMission2(Tools):
         Lógica da máquina de estados da Missão 2.
         FSM: GoingToBase -> Search_Base -> Scan_for_Base -> Landing
         """
+        if self.fsm == 'Takeoff':
+            self.current_state = 'Takeoff'
+            self.get_logger().info("=" * 60)
+            self.get_logger().info("ESTADO - Takeoff")
+            self.get_logger().info("=" * 60)
+            self.get_logger().info(f"Taking off to mission altitude: {self.base_alt}m...")
+            
+            if self.takeoffWait(z=self.base_alt, auto_arm=True):
+                self.get_logger().info("Takeoff successful!")
+                self.current_state = ''
+                self.fsm.add('takeoff_complete')
+            else:
+                self.get_logger().error("Takeoff failed! Ending mission.")
+                self.mission_running = False
+                return
+
         if self.fsm == 'GoingToBase':
             self.current_state = 'GoingToBase'
             self.get_logger().info("=" * 60)
@@ -146,7 +169,7 @@ class MasterMission2(Tools):
                             telem_atual = telem_future2.result()
                             distancia_y = -(self.x_center - self.image_width//2)/self.fx * telem_atual.z
                             distancia_x = -(self.y_center - self.image_height//2)/self.fy * telem_atual.z
-                            resultado = self.navigateCentralizeTeste(x=distancia_x, y=distancia_y, 
+                            resultado = self.navigateCentralize(x=distancia_x, y=distancia_y, 
                                                                      speed=0.1, frame_id='body')
                             if resultado == "success":
                                 self.current_state = ''

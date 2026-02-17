@@ -14,10 +14,18 @@ class YOLOBaseDetector(Node):
     def __init__(self):
         super().__init__('yolo_base_detector')
         
-        # Load YOLO model
-        model_path = os.path.join(os.path.dirname(__file__), 'yolo/modelo_fumaca.pt')
+        # Load YOLO model - check both installed and source locations
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # Try installed location first
+        model_path = os.path.join(script_dir, 'mission2/yolo/modelo_fumaca.pt')
+        if not os.path.exists(model_path):
+            # Try local source location
+            model_path = os.path.join(script_dir, 'yolo/modelo_fumaca.pt')
+        
         if not os.path.exists(model_path):
             self.get_logger().error(f"YOLO model not found at {model_path}")
+            self.get_logger().error(f"Searched in: {script_dir}")
             raise FileNotFoundError(f"YOLO model not found at {model_path}")
 
         self.model = YOLO(model_path)
