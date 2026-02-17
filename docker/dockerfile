@@ -222,7 +222,11 @@ RUN echo "" >> /root/.bashrc \
     && echo "fi" >> /root/.bashrc \
     && echo "" >> /root/.bashrc \
     && echo "# Gazebo version export" >> /root/.bashrc \
-    && echo "export GZ_VERSION=harmonic" >> /root/.bashrc
+    && echo "export GZ_VERSION=harmonic" >> /root/.bashrc \
+    && echo "" >> /root/.bashrc \
+    && echo "# Helpful aliases" >> /root/.bashrc \
+    && echo "alias cb='colcon build --symlink-install'" >> /root/.bashrc \
+    && echo "alias cs='source install/setup.bash'" >> /root/.bashrc
 
 # Create entrypoint script
 RUN echo '#!/bin/bash\n\

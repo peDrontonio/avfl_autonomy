@@ -70,8 +70,7 @@ def generate_launch_description():
     )
     
     # RViz
-    pkg_ardupilot_gz_bringup = get_package_share_directory('ardupilot_gz_bringup')
-    rviz_config = os.path.join(pkg_ardupilot_gz_bringup, 'rviz', 'drone_gazebo_simple_world.rviz')
+    rviz_config = os.path.join(pkg_drone_gazebo, 'rviz', 'drone_bottom.rviz')
     
     rviz = Node(
         package='rviz2',
