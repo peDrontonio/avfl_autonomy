@@ -12,7 +12,7 @@ from std_msgs.msg import Int32, Float32, Bool
 from geometry_msgs.msg import Vector3
 from drone_navigate.srv import Navigate, GetTelemetry, SetYawRate
 from std_srvs.srv import Trigger, SetBool
-from ardupilot_msgs.srv import ModeSwitch
+from ardupilot_msgs.srv import ModeSwitch, ArmMotors, Takeoff as TakeoffSrv
 import colorful as cf
 from rclpy.callback_groups import ReentrantCallbackGroup
 
@@ -89,7 +89,9 @@ class Tools(Node):
         self.navigate = self.create_client(Navigate, 'avfl/navigate', callback_group=self.client_cb_group)
         self.set_yaw_rate = self.create_client(SetYawRate, 'avfl/set_yaw_rate', callback_group=self.client_cb_group)
         self.get_telemetry = self.create_client(GetTelemetry, 'avfl/get_telemetry', callback_group=self.client_cb_group)
-        self.mode_switch = self.create_client(ModeSwitch, '/ap/mode_switch', callback_group=self.client_cb_group)        
+        self.mode_switch = self.create_client(ModeSwitch, '/ap/mode_switch', callback_group=self.client_cb_group)
+        self.arm_client = self.create_client(ArmMotors, '/ap/arm_motors', callback_group=self.client_cb_group)
+        self.takeoff_client = self.create_client(TakeoffSrv, '/ap/experimental/takeoff', callback_group=self.client_cb_group)        
         
 
     def setServer(self):
@@ -190,24 +192,22 @@ class Tools(Node):
     # ==========================================
     # CENTERING ALGORITHMS
     # ==========================================
-    def centerOnGate(self, timeout=30.0):
+    def centerOnGate(self, timeout=30.0, acceptance_radius=0.10):
         """
         Center the drone on the gate using ArUco marker feedback.
-        
-        This method continuously adjusts the drone position to center on the gate.
-        Uses proportional control based on the gate error from ArUco detection.
-        
+
         Args:
-            timeout: Maximum time to attempt centering (seconds)
-            
-        Returns:
-            True if centered successfully, False if timeout or lost markers
+            timeout: Maximum time for centering (seconds)
+            acceptance_radius: Error threshold to consider centered (meters)
         """
-        self.get_logger().info("Starting gate centering...")
+        self.get_logger().info(f"Starting gate centering (tolerance={acceptance_radius:.2f}m)...")
         start_time = time.time()
         
+        # CORREÇÃO: Definir tolerâncias locais para garantir consistência
+        min_correction_move = 0.05 # Mínimo movimento para enviar comando (deadband)
+        
         while rclpy.ok() and (time.time() - start_time) < timeout:
-            # Check if we still see markers (callbacks processed by MultiThreadedExecutor)
+            # Check detection freshness
             if not self.is_detection_recent():
                 self.get_logger().warn("Lost ArUco detection during centering")
                 return False
@@ -217,14 +217,6 @@ class Tools(Node):
                 time.sleep(0.2)
                 continue
             
-            # Check if already centered
-            if self.is_centered:
-                self.get_logger().info("Gate centering complete!")
-                return True
-            
-            # Calculate correction based on gate error
-            # gate_error.x > 0 means gate is to the right -> move right (negative Y in body frame, since Y+ = left)
-            # gate_error.y > 0 means gate is below -> move down (negative Z in body frame)
             error_x = self.gate_error.x
             error_y = self.gate_error.y
             
@@ -232,14 +224,21 @@ class Tools(Node):
             if math.isnan(error_x) or math.isnan(error_y):
                 time.sleep(0.1)
                 continue
+
+            # --- CORREÇÃO PRINCIPAL AQUI ---
+            # Se o erro for menor que a tolerância, CONSIDERE CENTRALIZADO e saia.
+            # Não dependa apenas do tópico /aruco/is_centered
+            if abs(error_x) < acceptance_radius and abs(error_y) < acceptance_radius:
+                self.get_logger().info(f"Gate centering complete! (Error X:{error_x:.3f}, Y:{error_y:.3f})")
+                return True
+            # -------------------------------
             
-            # Calculate corrections with proportional gain
-            # Note: In body frame, Y+ is LEFT, so negate error_x to move toward the gate
-            correction_y = -error_x * self.centering_gain_x  # Lateral correction
-            correction_z = -error_y * self.centering_gain_y  # Vertical correction
+            # Calculate corrections
+            correction_y = -error_x * self.centering_gain_x
+            correction_z = -error_y * self.centering_gain_y
             
-            # Limit correction magnitude
-            max_correction = 0.3  # meters
+            # Limit correction magnitude (Safety)
+            max_correction = 0.4
             correction_y = max(-max_correction, min(max_correction, correction_y))
             correction_z = max(-max_correction, min(max_correction, correction_z))
             
@@ -248,8 +247,9 @@ class Tools(Node):
                 f"correction=({correction_y:.3f}, {correction_z:.3f})"
             )
             
-            # Execute small correction movement
-            if abs(correction_y) > 0.02 or abs(correction_z) > 0.02:
+            # Execute correction only if it's significant (Deadband)
+            # Isso evita micro-correções que fazem o drone tremer
+            if abs(correction_y) > min_correction_move or abs(correction_z) > min_correction_move:
                 self.navigateWait(
                     x=0, 
                     y=correction_y, 
@@ -259,69 +259,54 @@ class Tools(Node):
                     tolerance=0.05,
                     auto_arm=False
                 )
+            else:
+                # Se a correção calculada é muito pequena, mas ainda estamos aqui
+                # (ou seja, erro > radius mas correção < min_move devido ao ganho),
+                # assumimos que está bom o suficiente para evitar loop infinito.
+                self.get_logger().info("Correction too small, assuming centered.")
+                return True
             
-            time.sleep(0.2)  # Small delay between corrections
+            time.sleep(0.2)
         
         self.get_logger().warn("Centering timeout")
-        return False
-
-    def partialCenterOnGate(self, timeout=15.0, threshold=0.15):
+        # Opcional: Retornar True se estiver "quase" lá no timeout
+        return abs(self.gate_error.x) < 0.2 and abs(self.gate_error.y) < 0.2
+    
+    def partialCenterOnGate(self, timeout=15.0, threshold=0.15): # Threshold aumentado no default
         """
         Center the drone on partial markers (2-3 visible) in X axis only.
-        
-        This is less accurate than full centering but helps position the drone
-        to see the remaining markers.
-        
-        Args:
-            timeout: Maximum time to attempt centering (seconds)
-            threshold: Error threshold to consider centered (meters)
-            
-        Returns:
-            True if centered on partial markers, False if timeout or lost markers
         """
-        self.get_logger().info("Starting partial centering on visible markers...")
+        self.get_logger().info("Starting partial centering...")
         start_time = time.time()
         
         while rclpy.ok() and (time.time() - start_time) < timeout:
-            # Callbacks processed automatically by MultiThreadedExecutor
-            
-            # Check if we now see all 4 markers
             if self.marker_count >= 4:
-                self.get_logger().info("All 4 markers visible during partial centering!")
                 return True
             
-            # Check if we lost markers (< 2)
             if self.marker_count < 2:
-                self.get_logger().warn("Lost markers during partial centering")
                 return False
             
-            # Get error (X axis only for partial centering)
             error_x = self.gate_error.x
             
-            # Skip if error is NaN
             if math.isnan(error_x):
                 time.sleep(0.1)
                 continue
             
-            # Check if centered enough in X
+            # --- CORREÇÃO ---
+            # Verificação explícita de sucesso
             if abs(error_x) <= threshold:
                 self.get_logger().info(f"Partial centering complete! Error X: {error_x:.3f}")
-                # Stop movement
-                self.navigateWait(x=0, y=0, z=0, frame_id='body', auto_arm=False, tolerance=0.05)
+                # Parar o movimento residual
+                self.navigateWait(x=0, y=0, z=0, frame_id='body', auto_arm=False, tolerance=0.1)
                 return True
+            # ----------------
             
-            # Calculate correction (X axis only)
-            # Body Y+ = LEFT, so negate to move toward gate (right)
             correction_y = -error_x * self.centering_gain_x
-            
-            # Limit correction magnitude
             max_correction = 0.3
             correction_y = max(-max_correction, min(max_correction, correction_y))
             
-            self.get_logger().info(f"Partial centering: error_x={error_x:.3f}, correction_y={correction_y:.3f}")
-            
-            # Execute correction
-            if abs(correction_y) > 0.02:
+            # Deadband para evitar oscilação
+            if abs(correction_y) > 0.05: 
                 self.navigateWait(
                     x=0, 
                     y=correction_y, 
@@ -331,12 +316,15 @@ class Tools(Node):
                     tolerance=0.05,
                     auto_arm=False
                 )
+            else:
+                 # Correção muito pequena, considera centralizado
+                 return True
             
             time.sleep(0.2)
         
         self.get_logger().warn("Partial centering timeout")
         return False
-
+    
     def searchForGate(self, search_distance=5.0, search_speed=0.3):
         """
         Search for the gate by moving laterally.
@@ -616,14 +604,14 @@ class Tools(Node):
                     self.navigateWait(x=0, y=0, z=-alignment_distance, speed=0.3,
                                     frame_id='body', tolerance=0.1, auto_arm=False)
                 elif detected_ids == {1, 3}:
-                    # Right pair -> Move LEFT
+                    # Right pair -> Move LEFT (y+ is left in body frame)
                     self.get_logger().info("Right markers {1, 3} detected -> Moving LEFT")
-                    self.navigateWait(x=0, y=-alignment_distance, z=0, speed=0.3,
+                    self.navigateWait(x=0, y=alignment_distance, z=0, speed=0.3,
                                     frame_id='body', tolerance=0.1, auto_arm=False)
                 elif detected_ids == {0, 2}:
-                    # Left pair -> Move RIGHT
+                    # Left pair -> Move RIGHT (y- is right in body frame)
                     self.get_logger().info("Left markers {0, 2} detected -> Moving RIGHT")
-                    self.navigateWait(x=0, y=alignment_distance, z=0, speed=0.3,
+                    self.navigateWait(x=0, y=-alignment_distance, z=0, speed=0.3,
                                     frame_id='body', tolerance=0.1, auto_arm=False)
                 else:
                     # Diagonal or unknown pair, use error-based movement
@@ -689,6 +677,55 @@ class Tools(Node):
         else:
             self.get_logger().error("Failed to advance through gate")
             return False
+
+    def takeoffWait(self, z, auto_arm=True):
+        """Switch to GUIDED, arm motors, and take off to the specified altitude."""
+        self.get_logger().info(f"Starting takeoff to {z}m...")
+
+        # Step 1: Switch to GUIDED mode
+        mode_req = ModeSwitch.Request()
+        mode_req.mode = 4  # GUIDED
+        mode_future = self.mode_switch.call_async(mode_req)
+        if not self.wait_for_future(mode_future, timeout_sec=5.0) or not mode_future.result().status:
+            self.get_logger().error("Failed to switch to GUIDED mode")
+            return False
+        self.get_logger().info("GUIDED mode activated")
+
+        # Step 2: Arm motors
+        if auto_arm:
+            arm_req = ArmMotors.Request()
+            arm_req.arm = True
+            arm_future = self.arm_client.call_async(arm_req)
+            if not self.wait_for_future(arm_future, timeout_sec=5.0) or not arm_future.result().result:
+                self.get_logger().error("Failed to arm motors")
+                return False
+            self.get_logger().info("Motors armed")
+
+        # Step 3: Send takeoff command
+        takeoff_req = TakeoffSrv.Request()
+        takeoff_req.alt = float(z)
+        takeoff_future = self.takeoff_client.call_async(takeoff_req)
+        if not self.wait_for_future(takeoff_future, timeout_sec=5.0):
+            self.get_logger().error("Takeoff service call timeout")
+            return False
+        self.get_logger().info("Takeoff command sent, waiting for altitude...")
+
+        # Step 4: Wait until target altitude is reached
+        start_time = time.time()
+        while rclpy.ok() and (time.time() - start_time) < 120.0:
+            telem_req = GetTelemetry.Request()
+            telem_req.frame_id = 'map'
+            telem_future = self.get_telemetry.call_async(telem_req)
+            if self.wait_for_future(telem_future, timeout_sec=1.0):
+                current_alt = telem_future.result().z
+                self.get_logger().info(f"Altitude: {current_alt:.2f}m / {z:.2f}m", throttle_duration_sec=1.0)
+                if abs(current_alt - z) < 0.5:
+                    self.get_logger().info(f"Target altitude reached: {current_alt:.2f}m")
+                    return True
+            time.sleep(0.2)
+
+        self.get_logger().error("Timeout waiting for target altitude")
+        return False
 
     def landDrone(self):
         """Switch to LAND mode to land the drone."""
