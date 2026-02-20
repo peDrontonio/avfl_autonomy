@@ -254,6 +254,7 @@ class MasterMission1(Tools):
 
             print(cf.green("=" * 50))
             print(cf.green("CENTERED & CLOSE — ready to pass through gate!"))
+            time.sleep(1.5)
             print(cf.green(f"  Error: X={self.gate_error.x:.3f}  Y={self.gate_error.y:.3f}"))
             print(cf.green(f"  Distance: {self.distance_to_gate:.1f}m"))
             print(cf.green("=" * 50))
