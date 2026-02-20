@@ -43,9 +43,9 @@ class MasterMission2(Tools):
             self.get_logger().info("=" * 60)
             self.get_logger().info("ESTADO - Takeoff")
             self.get_logger().info("=" * 60)
-            self.get_logger().info(f"Taking off to mission altitude: {self.base_alt}m...")
+            self.get_logger().info(f"Taking off to mission altitude: {self.takeoff_alt}m...")
             
-            if self.takeoffWait(z=self.base_alt, auto_arm=True):
+            if self.takeoffWait(z=self.takeoff_alt, auto_arm=True):
                 self.get_logger().info("Takeoff successful!")
                 self.current_state = ''
                 self.fsm.add('takeoff_complete')
@@ -65,9 +65,8 @@ class MasterMission2(Tools):
             result = self.navigateGlobalWait(
                 lat=self.base_lat,
                 lon=self.base_lon,
-                z=self.base_alt,
+                z=self.takeoff_alt,
                 speed=0.5,
-                tolerance=2.0, 
                 auto_arm=True
             )
             
@@ -96,6 +95,17 @@ class MasterMission2(Tools):
                 return
             
             self.get_logger().info("Searching for mobile base with camera...")
+
+            # Move to search altitude before starting lateral search
+            self.get_logger().info(f"Moving to search altitude: {self.search_alt}m...")
+            telem_req = GetTelemetry.Request()
+            telem_req.frame_id = 'map'
+            telem_future = self.get_telemetry.call_async(telem_req)
+            if self.wait_for_future(telem_future, timeout_sec=2.0):
+                telem = telem_future.result()
+                self.navigateWait(x= telem.x, y=telem.y, z=self.search_alt,
+                                  speed=2.0, frame_id='map', tolerance=0.1, auto_arm=False)
+                self.get_logger().info(f"Search altitude reached: {self.search_alt}m")
 
             # Start search pattern - move laterally while looking for base
             self.get_logger().info("Starting lateral search pattern...")
@@ -170,7 +180,7 @@ class MasterMission2(Tools):
                             distancia_y = -(self.x_center - self.image_width//2)/self.fx * telem_atual.z
                             distancia_x = -(self.y_center - self.image_height//2)/self.fy * telem_atual.z
                             resultado = self.navigateCentralize(x=distancia_x, y=distancia_y, 
-                                                                     speed=0.1, frame_id='body')
+                                                                     speed=0.15, frame_id='body')
                             if resultado == "success":
                                 self.current_state = ''
                                 self.fsm.add('centered')
@@ -178,6 +188,59 @@ class MasterMission2(Tools):
 
                 time.sleep(0.1)
 
+
+        elif self.fsm == 'Descend_and_Centralize':
+            self.current_state = 'Descend_and_Centralize'
+            low_alt = self.search_alt * 0.4
+            self.get_logger().info("=" * 60)
+            self.get_logger().info(f"ESTADO - Descend_and_Centralize")
+            self.get_logger().info("=" * 60)
+            self.get_logger().info(f"Descending to {low_alt:.1f}m for precision centralization...")
+            
+            # Descend to low altitude
+            telem_req = GetTelemetry.Request()
+            telem_req.frame_id = 'map'
+            telem_future = self.get_telemetry.call_async(telem_req)
+            
+            if self.wait_for_future(telem_future, timeout_sec=2.0):
+                telem = telem_future.result()
+                self.navigateWait(x=telem.x, y=telem.y, z=low_alt,
+                                  speed=1.0, frame_id='map', tolerance=0.2, auto_arm=False)
+                self.get_logger().info(f"Low altitude reached: {low_alt:.1f}m")
+            else:
+                self.get_logger().error("Telemetry timeout during descent")
+                self.current_state = ''
+                self.fsm.add('base_lost')
+                self.fsm.updateEvent()
+                return
+            
+            time.sleep(0.5)
+            
+            # Centralize once at low altitude
+            self.get_logger().info("Centralizing on base at low altitude...")
+            telem_req2 = GetTelemetry.Request()
+            telem_req2.frame_id = 'map'
+            telem_future2 = self.get_telemetry.call_async(telem_req2)
+            
+            if self.wait_for_future(telem_future2, timeout_sec=1.0):
+                telem_atual = telem_future2.result()
+                distancia_y = -(self.x_center - self.image_width//2)/self.fx * telem_atual.z
+                distancia_x = -(self.y_center - self.image_height//2)/self.fy * telem_atual.z
+                resultado = self.navigateCentralize(x=distancia_x, y=distancia_y,
+                                                   speed=0.1, frame_id='body',
+                                                   center_tolerance=15)
+                if resultado == "success":
+                    self.get_logger().info("Base centered at low altitude! Ready for landing.")
+                    self.current_state = ''
+                    self.fsm.add('centered_low')
+                else:
+                    self.get_logger().warn("Failed to centralize at low altitude, going back to scan")
+                    self.current_state = ''
+                    self.fsm.add('base_lost')
+            else:
+                self.get_logger().error("Telemetry timeout during centralization")
+                self.current_state = ''
+                self.fsm.add('base_lost')
 
         elif self.fsm == 'Landing':
             self.current_state = 'Landing'

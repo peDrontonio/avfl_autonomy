@@ -1,37 +1,22 @@
 #!/usr/bin/python3
 """
-Mission 1: ArUco Gate Passing with Intelligent Alignment
+Mission 1: ArUco Gate Passing — Simplified Flow
 
 Gate Layout (ArUco markers 0-3):
     2 --- 3
     |     |
     0 --- 1
 
-FSM States and Logic:
-1. SEARCHING: No markers visible
-   - Lateral search pattern
-   - Transition: markers detected -> ALIGNING
-
-2. ALIGNING: 1-3 markers visible
-   - Intelligent alignment based on detected marker pairs:
-     * {0, 1} (bottom) -> Move UP
-     * {2, 3} (top) -> Move DOWN
-     * {1, 3} (right) -> Move LEFT
-     * {0, 2} (left) -> Move RIGHT
-   - Transition: all 4 markers visible -> CENTERING
-
-3. CENTERING: All 4 markers visible
-   - Stop completely
-   - Center on gate using ArUco error feedback
-   - Transition: centered -> ADVANCING
-
-4. ADVANCING: Centered on gate
-   - Fly through gate (advance_distance meters)
-   - Move forward 1 additional meter
-   - Transition: completed -> LANDING
-
-5. LANDING: Mission complete
-   - Switch to LAND mode
+FSM States:
+1. TAKEOFF      – Arm and take off to search altitude.
+2. SEARCHING    – Lateral search until ≥ 2 markers found.
+3. ALIGNING     – Continuous movement in the direction dictated by the
+                  visible marker pair until all 4 markers are visible.
+4. CENTERING    – Phase A: center with HIGH tolerance, log distance.
+                  Phase B: approach until 3 m from gate.
+                  Phase C: center with LOW tolerance.
+5. ADVANCING    – Fly through the gate.
+6. LANDING      – Land the drone.
 """
 import math
 import os
@@ -65,288 +50,260 @@ class MasterMission1(Tools):
         self.setServer()
         
         # Mission parameters
-        self.search_distance = 6.0  # meters to search in each direction
-        self.search_speed = 0.2     # m/s for search movement
-        self.advance_distance = 5.0  # meters to fly through gate
-        self.advance_speed = 0.3    # m/s for advancing
+        self.search_distance = 6.0    # metres to search in each direction
+        self.search_speed = 0.2       # m/s for lateral search
+        self.advance_distance = 5.0   # metres to fly through gate
+        self.advance_speed = 0.3      # m/s for advancing
+        self.approach_target = 3.0    # stop approaching at this distance (m)
+        self.high_tolerance = 0.20    # loose centering (m)
+        self.low_tolerance = 0.08     # tight centering (m)
+
+        self.declare_parameter('takeoff_alt', 10.0)
+        self.takeoff_alt = self.get_parameter('takeoff_alt').get_parameter_value().double_value
+        self.get_logger().info(f"Takeoff altitude: {self.takeoff_alt}m")
+
+        self.fsm = Takeoff()
         
     def update(self):
-        """
-        State machine logic for Mission 1 - Gate Passing with ArUco Detection.
-        
-        States:
-        - Searching: Look for the gate by moving laterally
-        - Aligning: Partial markers visible, move to see all 4
-        - Centering: All markers visible, center on gate
-        - Advancing: Fly through the gate
-        - Landing: Land the drone
-        """
-        
+        """Main state-machine loop (called repeatedly from the mission service)."""
+
+        # ─────────────────────── TAKEOFF ───────────────────────
+        if self.fsm == 'Takeoff':
+            print(cf.blue("=" * 50))
+            print(cf.blue("State — TAKEOFF"))
+            print(cf.blue("=" * 50))
+            self.get_logger().info(f"Taking off to {self.takeoff_alt}m...")
+
+            if self.takeoffWait(z=self.takeoff_alt, auto_arm=True):
+                self.get_logger().info("Takeoff complete!")
+                self.fsm.add('takeoff_complete')
+                self.fsm.updateEvent()
+            else:
+                self.get_logger().error("Takeoff failed! Ending mission.")
+                self.mission_running = False
+            return
+
+        # ─────────────────────── SEARCHING ───────────────────────
         if self.fsm == 'Searching':
             print(cf.blue("=" * 50))
-            print(cf.blue("State - SEARCHING"))
+            print(cf.blue("State — SEARCHING"))
             print(cf.blue("=" * 50))
-            print(cf.yellow("Looking for gate markers..."))
-            
-            # Brief wait to ensure latest ArUco data is processed
-            time.sleep(0.2)
-            
-            # Check if we already see all 4 markers
             print(cf.yellow(f"Current marker count: {self.marker_count}"))
-            if self.marker_count >= 4:
-                print(cf.green(f"All 4 markers detected! Stopping and transitioning to Centering..."))
-                # Stop the drone
-                self.navigateWait(x=0, y=0, z=0, frame_id='body', auto_arm=False, tolerance=0.1)
-                self.fsm.add('all_markers_visible')
-                self.fsm.updateEvent()
-                time.sleep(2)
-                return
-            
-            # Check if we see 2-3 markers (partial detection)
+
+            time.sleep(0.2)
+
+            # Already have ≥ 2 markers?
             if self.marker_count >= 2:
-                print(cf.green(f"Partial detection ({self.marker_count} markers)! Stopping and transitioning to PartialCentering..."))
-                # Stop the drone
-                self.navigateWait(x=0, y=0, z=0, frame_id='body', auto_arm=False, tolerance=0.1)
-                self.fsm.add('partial_detected')
+                print(cf.green(f"{self.marker_count} markers detected, skipping search."))
+                self._stop_drone()
+                self.fsm.add('markers_found')
                 self.fsm.updateEvent()
-                time.sleep(2)
                 return
-            
-            # Search for the gate
+
+            # Lateral search
             found = self.searchForGate(
                 search_distance=self.search_distance,
                 search_speed=self.search_speed
             )
-            
-            # Brief wait for latest data after search
             time.sleep(0.1)
-            
-            if self.marker_count >= 4:
-                print(cf.green(f"All markers found! Markers: {self.marker_count}"))
-                self.fsm.add('all_markers_visible')
+
+            if found or self.marker_count >= 2:
+                print(cf.green(f"Gate found! Markers: {self.marker_count}"))
+                self.fsm.add('markers_found')
                 self.fsm.updateEvent()
-                time.sleep(2)
-            elif found or self.marker_count >= 2:
-                print(cf.green(f"Partial detection! Markers: {self.marker_count}"))
-                self.fsm.add('partial_detected')
-                self.fsm.updateEvent()
-                time.sleep(2)
             else:
-                print(cf.red(f"Gate not found (need 2+ markers, have {self.marker_count}), continuing search..."))
+                print(cf.red(f"Gate not found ({self.marker_count} markers), retrying..."))
                 time.sleep(1)
-        
-        elif self.fsm == 'PartialCentering':
+            return
+
+        # ─────────────────────── ALIGNING ───────────────────────
+        if self.fsm == 'Aligning':
             print(cf.blue("=" * 50))
-            print(cf.blue("State - PARTIAL CENTERING"))
+            print(cf.blue("State — ALIGNING (continuous)"))
             print(cf.blue("=" * 50))
-            print(cf.yellow(f"Markers visible: {self.marker_count}/4"))
-            print(cf.yellow(f"Detected IDs: {self.get_detected_marker_ids()}"))
-            
-            # Callbacks processed by MultiThreadedExecutor automatically
-            
-            # Check if all 4 markers are now visible
-            if self.marker_count >= 4:
-                print(cf.green("All 4 markers visible! Transitioning to Centering..."))
-                self.navigateWait(x=0, y=0, z=0, frame_id='body', auto_arm=False, tolerance=0.1)
-                self.fsm.add('all_markers_visible')
+            print(cf.yellow(f"Markers: {self.marker_count}/4  IDs: {self.get_detected_marker_ids()}"))
+
+            # Already all visible?
+            if self.check_all_markers_visible():
+                print(cf.green("All 4 markers already visible!"))
+                self._stop_drone()
+                self.fsm.add('all_visible')
                 self.fsm.updateEvent()
-                time.sleep(2)
                 return
-            
-            # Check if we lost markers (< 2)
+
             if self.marker_count < 2:
-                print(cf.red("Lost markers! Returning to Searching..."))
+                print(cf.red("Lost markers, back to Searching"))
                 self.fsm.add('markers_lost')
                 self.fsm.updateEvent()
-                time.sleep(2)
                 return
-            
-            # Center on the partial markers (X axis only)
-            centered = self.partialCenterOnGate(timeout=15.0)
-            
-            # Check again after centering
+
+            # Determine direction from the visible marker pair
+            detected_ids = self.get_detected_marker_ids()
+            y_move = 0.0
+            z_move = 0.0
+            align_dist = 3.0
+
+            if detected_ids == {0, 1}:    # Bottom pair → move UP
+                z_move = align_dist
+            elif detected_ids == {2, 3}:  # Top pair → move DOWN
+                z_move = -align_dist
+            elif detected_ids == {1, 3}:  # Right pair → move LEFT (y+)
+                y_move = align_dist
+            elif detected_ids == {0, 2}:  # Left pair → move RIGHT (y-)
+                y_move = -align_dist
+            else:
+                # 3 markers or diagonal: use gate_error
+                ex = self.gate_error.x
+                ey = self.gate_error.y
+                if not math.isnan(ex):
+                    y_move = -ex * 2.0
+                if not math.isnan(ey):
+                    z_move = -ey * 2.0
+                y_move = max(-align_dist, min(align_dist, y_move))
+                z_move = max(-align_dist, min(align_dist, z_move))
+
+            print(cf.yellow(f"Moving y={y_move:.2f}, z={z_move:.2f} until 4 markers visible"))
+
+            result = self.navigateInterruptedByMarkers(
+                x=0.0, y=y_move, z=z_move,
+                speed=0.3, frame_id='body',
+                min_markers=4, timeout=20.0
+            )
+
             time.sleep(0.1)
-            
-            if self.marker_count >= 4:
-                print(cf.green("All markers visible after partial centering!"))
-                self.fsm.add('all_markers_visible')
+
+            if result == 'markers_found' or self.marker_count >= 4:
+                print(cf.green("All 4 markers visible!"))
+                self.fsm.add('all_visible')
                 self.fsm.updateEvent()
-                time.sleep(2)
-            elif centered:
-                print(cf.green("Partial centering complete! Transitioning to Aligning..."))
-                self.fsm.add('partial_centered')
-                self.fsm.updateEvent()
-                time.sleep(2)
-            elif self.marker_count < 2:
-                print(cf.red("Lost markers during partial centering"))
-                self.fsm.add('markers_lost')
-                self.fsm.updateEvent()
-                time.sleep(2)
-            
-        elif self.fsm == 'Aligning':
-            print(cf.blue("=" * 50))
-            print(cf.blue("State - ALIGNING"))
-            print(cf.blue("=" * 50))
-            print(cf.yellow(f"Markers visible: {self.marker_count}/4"))
-            print(cf.yellow(f"Detected IDs: {self.get_detected_marker_ids()}"))
-            
-            # Callbacks processed by MultiThreadedExecutor automatically
-            
-            # Check if all markers are already visible
-            if self.marker_count >= 4:
-                print(cf.green("All markers visible! Transitioning to Centering..."))
-                self.navigateWait(x=0, y=0, z=0, frame_id='body', auto_arm=False, tolerance=0.1)
-                self.fsm.add('all_markers_visible')
-                self.fsm.updateEvent()
-                time.sleep(2)
-                return
-            
-            # Check if we lost all markers (< 2)
-            if self.marker_count < 2:
-                print(cf.red("Lost all markers! Returning to Searching..."))
-                self.fsm.add('markers_lost')
-                self.fsm.updateEvent()
-                time.sleep(2)
-                return
-            
-            # Try to align to see all markers (adjust based on detected marker pair)
-            aligned = self.alignToGate(timeout=20.0)
-            
-            # Brief wait for latest data after alignment
-            time.sleep(0.1)
-            
-            if self.marker_count >= 4:
-                print(cf.green("Alignment complete! All markers visible!"))
-                self.fsm.add('all_markers_visible')
-                self.fsm.updateEvent()
-                time.sleep(2)
             elif self.marker_count < 2:
                 print(cf.red("Lost markers during alignment"))
                 self.fsm.add('markers_lost')
                 self.fsm.updateEvent()
-                time.sleep(2)
             else:
-                # Still have 2-3 markers, go back to partial centering
-                print(cf.orange("Still have partial detection, returning to PartialCentering..."))
-                self.fsm.add('partial_lost')
-                self.fsm.updateEvent()
-                time.sleep(2)
+                # Still 2-3 markers, loop back and re-evaluate direction
+                print(cf.orange(f"Still {self.marker_count} markers, re-evaluating..."))
+            return
 
-        elif self.fsm == 'Centering':
+        # ─────────────────────── CENTERING ───────────────────────
+        if self.fsm == 'Centering':
             print(cf.blue("=" * 50))
-            print(cf.blue("State - CENTERING"))
+            print(cf.blue("State — CENTERING"))
             print(cf.blue("=" * 50))
-            print(cf.yellow(f"Gate error: X={self.gate_error.x:.3f}, Y={self.gate_error.y:.3f}"))
-            print(cf.yellow(f"Markers visible: {self.marker_count}/4"))
-            
-            # Callbacks processed by MultiThreadedExecutor automatically
-            
-            # Stop completely before starting centering
-            print(cf.yellow("Stopping before centering..."))
-            self.navigateWait(x=0, y=0, z=0, frame_id='body', auto_arm=False, tolerance=0.1)
-            time.sleep(0.5)
-            
-            # VERIFY: Must have all 4 markers visible to stay in Centering
+            print(cf.yellow(f"Gate error: X={self.gate_error.x:.3f}  Y={self.gate_error.y:.3f}"))
+            print(cf.yellow(f"Markers: {self.marker_count}/4  Distance: {self.distance_to_gate:.1f}m"))
+
+            # Safety: still see markers?
             if self.marker_count < 2:
-                print(cf.red("Lost all markers! Returning to Searching..."))
-                self.fsm.add('all_markers_lost')
-                self.fsm.updateEvent()
-                time.sleep(2)
-                return
-            elif self.marker_count < 4:
-                print(cf.orange(f"Lost some markers ({self.marker_count}/4), returning to PartialCentering..."))
+                print(cf.red("Lost markers! Back to Searching."))
                 self.fsm.add('markers_lost')
                 self.fsm.updateEvent()
-                time.sleep(2)
                 return
-            
-            # Center on the gate (both X and Y)
-            centered = self.centerOnGate(timeout=30.0)
-            
-            # Brief wait for latest data after centering
-            time.sleep(0.1)
-            
-            # VERIFY BOTH CONDITIONS: 4 markers visible AND centered
-            if self.marker_count >= 4 and (centered or self.check_centered()):
-                print(cf.green("=" * 50))
-                print(cf.green("VERIFIED: 4 markers visible AND centered!"))
-                print(cf.green(f"  Markers: {self.marker_count}/4"))
-                print(cf.green(f"  Error: X={self.gate_error.x:.3f}, Y={self.gate_error.y:.3f}"))
-                print(cf.green("  Ready to advance through gate!"))
-                print(cf.green("=" * 50))
-                self.fsm.add('centered')
-                self.fsm.updateEvent()
-                time.sleep(2)
-            elif self.marker_count < 2:
-                print(cf.red("Lost all markers during centering"))
-                self.fsm.add('all_markers_lost')
-                self.fsm.updateEvent()
-                time.sleep(2)
-            elif self.marker_count < 4:
-                print(cf.orange(f"Lost some markers during centering ({self.marker_count}/4)"))
-                self.fsm.add('markers_lost')
-                self.fsm.updateEvent()
-                time.sleep(2)
+
+            # ── Phase A: Loose centering ──
+            print(cf.yellow(f"Phase A — Centering with HIGH tolerance ({self.high_tolerance}m)..."))
+            self._stop_drone()
+            time.sleep(0.3)
+
+            centered_loose = self.centerOnGate(
+                timeout=30.0,
+                acceptance_radius=self.high_tolerance
+            )
+            if not centered_loose:
+                if self.marker_count < 2:
+                    self.fsm.add('markers_lost')
+                    self.fsm.updateEvent()
+                    return
+                print(cf.orange("Loose centering incomplete, retrying state..."))
+                time.sleep(0.5)
+                return
+
+            print(cf.green(f"Loosely centered!  Distance to gate: {self.distance_to_gate:.1f}m"))
+
+            # ── Phase B: Approach to 3 m ──
+            if self.distance_to_gate > self.approach_target:
+                forward = self.distance_to_gate - self.approach_target
+                print(cf.yellow(f"Phase B — Approaching {forward:.1f}m forward (dist={self.distance_to_gate:.1f}m → {self.approach_target}m)"))
+                self.navigateWait(
+                    x=forward, y=0, z=0,
+                    speed=0.3, frame_id='body',
+                    tolerance=0.3, auto_arm=False
+                )
+                time.sleep(0.3)
+                print(cf.green(f"Distance to gate now: {self.distance_to_gate:.1f}m"))
             else:
-                # Still have 4 markers but not centered yet - keep trying
-                print(cf.yellow("Still centering... (4 markers visible but not centered yet)"))
-        
-        elif self.fsm == 'Advancing':
+                print(cf.green(f"Already within {self.approach_target}m ({self.distance_to_gate:.1f}m)"))
+
+            # ── Phase C: Tight centering ──
+            print(cf.yellow(f"Phase C — Centering with LOW tolerance ({self.low_tolerance}m)..."))
+            self._stop_drone()
+            time.sleep(0.3)
+
+            centered_tight = self.centerOnGate(
+                timeout=30.0,
+                acceptance_radius=self.low_tolerance
+            )
+            if not centered_tight:
+                if self.marker_count < 2:
+                    self.fsm.add('markers_lost')
+                    self.fsm.updateEvent()
+                    return
+                print(cf.orange("Tight centering incomplete, retrying state..."))
+                time.sleep(0.5)
+                return
+
+            print(cf.green("=" * 50))
+            print(cf.green("CENTERED & CLOSE — ready to pass through gate!"))
+            print(cf.green(f"  Error: X={self.gate_error.x:.3f}  Y={self.gate_error.y:.3f}"))
+            print(cf.green(f"  Distance: {self.distance_to_gate:.1f}m"))
+            print(cf.green("=" * 50))
+            self.fsm.add('ready_to_pass')
+            self.fsm.updateEvent()
+            return
+
+        # ─────────────────────── ADVANCING ───────────────────────
+        if self.fsm == 'Advancing':
             print(cf.blue("=" * 50))
-            print(cf.blue("State - ADVANCING"))
+            print(cf.blue("State — ADVANCING"))
             print(cf.blue("=" * 50))
             print(cf.yellow("Flying through the gate..."))
-            
-            # Callbacks processed by MultiThreadedExecutor automatically
-            
-            # VERIFY before advancing: should still see markers and be centered
-            if self.marker_count >= 4 and not self.check_centered():
-                print(cf.orange("Lost centering (still have 4 markers), re-centering..."))
-                self.fsm.add('lost_alignment')
-                self.fsm.updateEvent()
-                time.sleep(2)
-                return
-            
-            # Advance through the gate
+
             success = self.advanceThroughGate(
                 advance_distance=self.advance_distance,
                 advance_speed=self.advance_speed
             )
-            
+
             if success:
-                print(cf.green("Gate crossed! Moving forward 1 meter..."))
-                # Move forward an additional 1 meter after crossing
+                print(cf.green("Gate crossed! Moving 1 m extra..."))
                 self.navigateWait(
                     x=1.0, y=0, z=0,
                     speed=0.3, frame_id='body',
                     tolerance=0.2, auto_arm=False
                 )
-                print(cf.green("Completed post-gate movement!"))
-            
+
             print(cf.green("Ready to land!"))
             self.fsm.add('crossed')
             self.fsm.updateEvent()
-            time.sleep(2)
-            
-        elif self.fsm == 'Landing':
+            return
+
+        # ─────────────────────── LANDING ───────────────────────
+        if self.fsm == 'Landing':
             print(cf.blue("=" * 50))
-            print(cf.blue("State - LANDING"))
+            print(cf.blue("State — LANDING"))
             print(cf.blue("=" * 50))
-            print(cf.yellow("Landing the drone..."))
-            
-            # Land the drone
+
             self.landDrone()
-            
+
             print(cf.green("Landing complete!"))
             time.sleep(2)
-            
-            # Finish FSM
+
             self.fsm.add('landed')
             self.fsm.updateEvent()
             self.mission_running = False
             print(cf.green("=" * 50))
             print(cf.green("MISSION 1 COMPLETED!"))
             print(cf.green("=" * 50))
+            return
 
 
 

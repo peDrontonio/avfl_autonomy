@@ -74,6 +74,11 @@ Visualization Manager:
           Show Axes: false
           Show Trail: false
           Value: true
+        bottom_camera_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
         camera_link:
           Alpha: 1
           Show Axes: false
@@ -138,6 +143,8 @@ Visualization Manager:
         All Enabled: true
         base_link:
           Value: true
+        bottom_camera_link:
+          Value: true
         camera_link:
           Value: true
         imu_link:
@@ -160,6 +167,8 @@ Visualization Manager:
       Tree:
         odom:
           base_link:
+            bottom_camera_link:
+              {}
             camera_link:
               {}
             imu_link:
@@ -235,10 +244,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.7903978824615479
+      Pitch: 0.7603979110717773
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 3.8454129695892334
+      Yaw: 4.100417137145996
     Saved: ~
 Window Geometry:
   Displays:
@@ -258,5 +267,5 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 1200
-  X: 70
-  Y: 344
+  X: 2354
+  Y: 148

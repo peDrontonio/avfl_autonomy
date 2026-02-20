@@ -26,9 +26,9 @@ class Search_Base(State):
         super().__init__(name)
     
     def event(self):
-        # Transition to Landing when base is found
+        # Transition to Descend_and_Centralize when base is found
         if self.tail('base_found'):
-            return Landing
+            return Descend_and_Centralize
         
         if self.tail('base_lost'):
             return Scan_for_Base
@@ -43,9 +43,27 @@ class Scan_for_Base(State):
         super().__init__(name)
     
     def event(self):
-        # Transition to Landing when base is centered
+        # Transition to Descend_and_Centralize when base is centered
         if self.tail('centered'):
+            return Descend_and_Centralize
+        
+        # Safety: return to base after max retries
+        if self.tail('rtl'):
+            return ReturnBase
+        return self
+
+class Descend_and_Centralize(State):
+    def __init__(self, name="") -> None:
+        super().__init__(name)
+    
+    def event(self):
+        # Transition to Landing when centered at low altitude
+        if self.tail('centered_low'):
             return Landing
+        
+        # If base lost during descent, go back to scanning
+        if self.tail('base_lost'):
+            return Scan_for_Base
         
         # Safety: return to base after max retries
         if self.tail('rtl'):

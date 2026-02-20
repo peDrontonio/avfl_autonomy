@@ -22,6 +22,7 @@ from geographic_msgs.msg import GeoPoseStamped
 from ardupilot_msgs.srv import ArmMotors, ModeSwitch
 from ardupilot_msgs.msg import GlobalPosition
 from drone_navigate.srv import Navigate
+from std_msgs.msg import Bool
 
 import tf2_ros
 import math
@@ -140,6 +141,7 @@ class NavigateServiceNode(Node):
         )
         self.vel_pub = self.create_publisher(TwistStamped, '/ap/cmd_vel', cmd_vel_qos)
         self.gps_pose_pub = self.create_publisher(GlobalPosition, '/ap/cmd_gps_pose', 10)
+        self.nav_active_pub = self.create_publisher(Bool, 'avfl/nav_active', 10)
 
         # --- Service Clients ---
         self.arm_client = self.create_client(
@@ -329,6 +331,11 @@ class NavigateServiceNode(Node):
             self.nav_speed = min(request.speed if request.speed > 0 else 0.5, self.max_velocity)
             self.is_navigating = True
 
+        # Publish nav_active status
+        active_msg = Bool()
+        active_msg.data = True
+        self.nav_active_pub.publish(active_msg)
+
         # Broadcast navigate_target static TF so telemetry queries work
         self.broadcast_navigate_target(self.target_position)
 
@@ -427,6 +434,11 @@ class NavigateServiceNode(Node):
                 self.target_position = None
                 self.target_yaw = None
                 self.is_navigating = False
+            
+            # Publish nav_active = False so callers know we arrived
+            done_msg = Bool()
+            done_msg.data = False
+            self.nav_active_pub.publish(done_msg)
             
             return
 

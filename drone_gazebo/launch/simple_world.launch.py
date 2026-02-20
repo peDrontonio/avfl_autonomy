@@ -70,7 +70,7 @@ def generate_launch_description():
     )
     
     # RViz
-    rviz_config = os.path.join(pkg_drone_gazebo, 'rviz', 'drone_bottom.rviz')
+    rviz_config = os.path.join(pkg_drone_gazebo, 'rviz', 'drone_gazebo.rviz')
     
     rviz = Node(
         package='rviz2',

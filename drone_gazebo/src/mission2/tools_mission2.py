@@ -16,7 +16,7 @@ from rclpy.node import Node
 from states import Search_Base, GoingToBase, Takeoff
 from nav_msgs.msg import Odometry
 from mavros_msgs.srv import CommandBool
-from std_msgs.msg import Int32
+from std_msgs.msg import Int32, Bool
 from drone_navigate.srv import Navigate, GetTelemetry, SetYawRate, NavigateGlobal
 from std_srvs.srv import Trigger, SetBool
 from ardupilot_msgs.srv import ModeSwitch, ArmMotors, Takeoff as TakeoffSrv
@@ -35,6 +35,8 @@ class Tools(Node):
 
         self.fsm = Takeoff()
         self.mission_running = False
+        self.global_nav_active = False
+        self.nav_active = False
         
         # Safety: search attempt counters for RTL
         self.search_attempts = 0
@@ -75,16 +77,21 @@ class Tools(Node):
         # Base GPS coordinates (lat, lon, altitude)
         self.declare_parameter('base_lat', 0.0)
         self.declare_parameter('base_lon', 0.0)
-        self.declare_parameter('base_alt', 10.0)  # meters above ground
+        self.declare_parameter('takeoff_alt', 10.0)  # meters above ground
+        self.declare_parameter('search_alt', 10.0)  # Altitude for search pattern
         
         self.base_lat = self.get_parameter('base_lat').get_parameter_value().double_value
         self.base_lon = self.get_parameter('base_lon').get_parameter_value().double_value
-        self.base_alt = self.get_parameter('base_alt').get_parameter_value().double_value
+        self.takeoff_alt = self.get_parameter('takeoff_alt').get_parameter_value().double_value
+        self.search_alt = self.get_parameter('search_alt').get_parameter_value().double_value
         
-        self.get_logger().info(f"Base coordinates - Lat: {self.base_lat}, Lon: {self.base_lon}, Alt: {self.base_alt}m")
+        self.get_logger().info(f"Base coordinates - Lat: {self.base_lat}, Lon: {self.base_lon}, Alt: {self.takeoff_alt}m")
+        self.get_logger().info(f"Search altitude: {self.search_alt}m")
         
     def setSubscribers(self):
         self.create_subscription(BaseDetection, '/yolo/base_detection', self.base_detection_callback, 10)
+        self.create_subscription(Bool, 'avfl/global_nav_active', self.global_nav_active_callback, 10)
+        self.create_subscription(Bool, 'avfl/nav_active', self.nav_active_callback, 10)
     def setPublishers(self):
         pass
         
@@ -138,6 +145,14 @@ class Tools(Node):
         else:
             self.consecutive_detections = 0
 
+    def global_nav_active_callback(self, msg):
+        '''Track whether global navigation is currently active'''
+        self.global_nav_active = msg.data
+
+    def nav_active_callback(self, msg):
+        '''Track whether local navigation is currently active'''
+        self.nav_active = msg.data
+
     def is_base_centered(self, tolerance = 30):
         '''Check if the detected base is centered in the camera frame'''
         if not self.base_detected:
@@ -152,7 +167,7 @@ class Tools(Node):
         # print(offset_x, offset_y)
         return offset_x <= tolerance and offset_y <= tolerance 
     
-    def is_base_in_x_Axis(self, tolerance = 10):
+    def is_base_in_x_Axis(self, tolerance = 20):
         if not self.base_detected:
             return False
             
@@ -163,7 +178,7 @@ class Tools(Node):
         # print(offset_x, offset_y)
         return offset_x <= tolerance 
 
-    def is_base_in_y_Axis(self, tolerance = 10):
+    def is_base_in_y_Axis(self, tolerance = 20):
         if not self.base_detected:
             return False
             
@@ -326,7 +341,7 @@ class Tools(Node):
             
             # Wait until we reach the target altitude
             start_time = time.time()
-            timeout = 30.0  # 30 seconds timeout
+            timeout = 120.0  # 30 seconds timeout
             
             while rclpy.ok() and (time.time() - start_time) < timeout:
                 telem_req = GetTelemetry.Request()
@@ -353,8 +368,8 @@ class Tools(Node):
             self.get_logger().error("Takeoff service call timeout")
             return False
 
-    def navigateGlobalWait(self, lat, lon, z, yaw=float('nan'), speed=0.5, tolerance=0.2, auto_arm=True):
-        '''Navigate to GPS coordinates and wait until target is reached'''
+    def navigateGlobalWait(self, lat, lon, z, yaw=float('nan'), speed=0.5, auto_arm=True):
+        '''Navigate to GPS coordinates and wait until the global nav service signals arrival'''
         try:
             # Wait for service to be available
             if not self.navigate_global.wait_for_service(timeout_sec=5.0):
@@ -375,7 +390,6 @@ class Tools(Node):
             
             future = self.navigate_global.call_async(req)
             
-            # Wait for service response (MultiThreadedExecutor handles callbacks)
             if not self.wait_for_future(future, timeout_sec=30.0):
                 self.get_logger().error("Global navigation service call timeout after 30 seconds")
                 return None
@@ -385,43 +399,30 @@ class Tools(Node):
                 self.get_logger().error(f"Failed to start global navigation: {res.message}")
                 return res
             
-            self.get_logger().info("Global navigation started, waiting to reach target...")
+            self.get_logger().info("Global navigation started, waiting for arrival...")
             
-            # Wait for TF propagation and drone to start moving
-            time.sleep(2.0)
-            
-            # Safety timeout: allow max 120 seconds for GPS navigation
+            # Safety timeout
             nav_start = time.time()
             nav_timeout = 120.0
             
-            # Wait until we reach the target
+            # Wait until the service itself signals navigation is done
             while rclpy.ok():
                 if time.time() - nav_start > nav_timeout:
                     self.get_logger().warn(f"navigateGlobalWait timeout ({nav_timeout}s)")
                     return res
                 
-                telem_req = GetTelemetry.Request()
-                telem_req.frame_id = 'navigate_target'
-                telem_future = self.get_telemetry.call_async(telem_req)
-                
-                if not self.wait_for_future(telem_future, timeout_sec=1.0):
-                    continue
-                
-                telem = telem_future.result()
-                distance = math.sqrt(telem.x ** 2 + telem.y ** 2 + telem.z ** 2)
-                
-                self.get_logger().info(f"Distance to GPS target: {distance:.2f}m (tolerance: {tolerance}m)", throttle_duration_sec=2.0)
-                
-                if distance < tolerance:
+                if not self.global_nav_active:
                     self.get_logger().info("Target GPS location reached!")
                     return res
-                time.sleep(0.1)
+                
+                time.sleep(0.2)
+
         except Exception as e:
             self.get_logger().error(f"Error during global navigation: {e}")
             return None
 
     def navigateWait(self, x=0, y=0, z=0, yaw=float('nan'), speed=0.2, frame_id='map', tolerance=0.1, auto_arm=True, z_participation = 1):
-        '''Navigate without interruption, wait until target is reached '''
+        '''Navigate and wait until the navigate service reports target reached via nav_active topic.'''
         try:
             req = Navigate.Request()
             req.x = float(x)
@@ -436,7 +437,7 @@ class Tools(Node):
             future = self.navigate.call_async(req)
             
             if not self.wait_for_future(future, timeout_sec=10.0):
-                self.get_logger().error("Navigação timeout")
+                self.get_logger().error("Navegação timeout")
                 return None
             
             res = future.result()
@@ -447,27 +448,19 @@ class Tools(Node):
             
             # Safety timeout
             nav_distance = math.sqrt(float(x)**2 + float(y)**2 + float(z)**2)
-            nav_timeout = max(10.0, (nav_distance / max(speed, 0.1)) * 3.0 + 5.0)
+            nav_timeout = max(10.0, (nav_distance / max(speed, 0.1)) * 30.0 + 5.0)
             nav_start = time.time()
             
+            # Wait until the navigate service signals completion via nav_active topic
             while rclpy.ok():
                 if time.time() - nav_start > nav_timeout:
                     self.get_logger().warn(f"navigateWait timeout ({nav_timeout:.1f}s)")
                     return res
                 
-                telem_req = GetTelemetry.Request()
-                telem_req.frame_id = 'navigate_target'
-                telem_future = self.get_telemetry.call_async(telem_req)
-                
-                if not self.wait_for_future(telem_future, timeout_sec=1.0):
-                    continue
-                
-                telem = telem_future.result()
-                distance = math.sqrt(telem.x ** 2 + telem.y ** 2 + (telem.z * z_participation) ** 2)
-                # self.get_logger().info(f"Distância até o alvo: {distance:.2f} m")
-                if distance < tolerance:
-                    self.get_logger().info("Alvo alcançado")
+                if not self.nav_active:
+                    self.get_logger().info("Alvo alcançado (navigate service confirmou)")
                     return res
+                
                 time.sleep(0.1)
         except Exception as e:
             self.get_logger().error(f"Erro ao chamar o serviço de navegação: {e}")
@@ -499,15 +492,7 @@ class Tools(Node):
                     return "failed"
                 self.get_logger().info("Navegação iniciada")
                 while rclpy.ok():
-                    telem_req = GetTelemetry.Request()
-                    telem_req.frame_id = 'navigate_target'
-                    telem_future = self.get_telemetry.call_async(telem_req)
-                    
-                    if not self.wait_for_future(telem_future, timeout_sec=1.0):
-                        continue
-                    
-                    telem = telem_future.result()
-                    
+                    # Update last known base coordinates if detected
                     if self.consecutive_detections > self.required_consecutive_detections:
                         map_req = GetTelemetry.Request()
                         map_req.frame_id = 'map'
@@ -517,17 +502,20 @@ class Tools(Node):
                             self.last_base_coordinates.x = self.last_base_coordinates.x - (self.y_center - self.image_height//2)/self.fy * self.last_base_coordinates.z
                             self.last_base_coordinates.y = self.last_base_coordinates.y - (self.x_center - self.image_width//2)/self.fx * self.last_base_coordinates.z
                     
-                    distance = math.sqrt(telem.x ** 2 + telem.y ** 2 + (telem.z * z_participation) ** 2)
-                    # self.get_logger().info(f"Distância até o alvo: {distance:.2f} m")
-                    if (distance < tolerance):
-                        self.get_logger().info("Base não encontrada nessa direção. Tentando novamente.")
-                        y = -2 * y # Inverte a direção e dobra a distância
-                        auto_arm = False
-                        break
+                    # Check if base is centered (interrupt navigation)
                     if self.is_base_centered(center_tolerance):
                         self.get_logger().info("Base encontrada e centrada. Alvo alcançado.")
                         self.navigateWait(x=0, y = 0, yaw=yaw, speed=speed, frame_id='body', auto_arm=False)
                         return "success"
+                    
+                    # Check if navigate service reached target (base not found in this direction)
+                    if not self.nav_active:
+                        self.get_logger().info("Base não encontrada nessa direção. Tentando novamente.")
+                        y = -2 * y # Inverte a direção e dobra a distância
+                        auto_arm = False
+                        break
+                    
+                    time.sleep(0.1)
             except Exception as e:
                 self.get_logger().error(f"Erro ao chamar o serviço de navegação: {e}")
                 
@@ -537,26 +525,50 @@ class Tools(Node):
     def navigateCentralize(self, x=0, y=0, z=0, yaw=0, speed=0.2, frame_id='map', tolerance=0.1, auto_arm=False, z_participation = 1, center_tolerance = 10):
         '''Navigate without interruption, wait until target is reached '''
         try:
-            res = self.navigate(x=x, y=y, z=z, yaw=yaw, speed=speed, frame_id=frame_id, auto_arm=auto_arm)
+            req = Navigate.Request()
+            req.x = float(x)
+            req.y = float(y)
+            req.z = float(z)
+            req.yaw = float(yaw)
+            req.yaw_rate = 0.0
+            req.speed = float(speed)
+            req.frame_id = frame_id
+            req.auto_arm = auto_arm
+            
+            future = self.navigate.call_async(req)
+            
+            if not self.wait_for_future(future, timeout_sec=10.0):
+                self.get_logger().error("Navegação timeout")
+                return "failed"
+            
+            res = future.result()
             if not res.success:
                 self.get_logger().error("Falha na navegação")
-                return res
+                return "failed"
             self.get_logger().info("Navegação iniciada")
             while rclpy.ok():
-                telem = self.get_telemetry(frame_id='navigate_target')
+                # Update last known base coordinates if detected
                 if self.consecutive_detections > self.required_consecutive_detections:
-                    self.last_base_coordinates = self.get_telemetry(frame_id='map')
-                    self.last_base_coordinates.x = self.last_base_coordinates.x - (self.y_center - self.image_height//2)/self.fy * self.last_base_coordinates.z
-                    self.last_base_coordinates.y = self.last_base_coordinates.y - (self.x_center - self.image_width//2)/self.fx * self.last_base_coordinates.z
-                distance = math.sqrt(telem.x ** 2 + telem.y ** 2 + (telem.z * z_participation) ** 2)
-                # self.get_logger().info(f"Distância até o alvo: {distance:.2f} m")
-                if (distance < tolerance):
-                    self.get_logger().info("Limite de movimento alcançado.")
-                    return "failure"
+                    map_req = GetTelemetry.Request()
+                    map_req.frame_id = 'map'
+                    map_future = self.get_telemetry.call_async(map_req)
+                    if self.wait_for_future(map_future, timeout_sec=1.0):
+                        self.last_base_coordinates = map_future.result()
+                        self.last_base_coordinates.x = self.last_base_coordinates.x - (self.y_center - self.image_height//2)/self.fy * self.last_base_coordinates.z
+                        self.last_base_coordinates.y = self.last_base_coordinates.y - (self.x_center - self.image_width//2)/self.fx * self.last_base_coordinates.z
+                
+                # Check if base is centered on X axis (success)
                 if self.is_base_in_x_Axis(center_tolerance):
                     self.get_logger().info("Base encontrada e centrada. Alvo alcançado.")
                     self.navigateWait(x=0, y = 0, yaw=yaw, speed=speed, frame_id='body', auto_arm=False)
                     return "success"
+                
+                # Check if navigate service reached target (movement limit reached)
+                if not self.nav_active:
+                    self.get_logger().info("Limite de movimento alcançado.")
+                    return "failure"
+                
+                time.sleep(0.1)
         except Exception as e:
             self.get_logger().error(f"Erro ao chamar o serviço de navegação: {e}")
                 
@@ -588,7 +600,13 @@ class Tools(Node):
         '''Navigate without interruption, wait until target is reached '''
         try:
             self.get_logger().info("Navegação iniciada")
-            inicial = self.get_telemetry(frame_id='map')
+            telem_req = GetTelemetry.Request()
+            telem_req.frame_id = 'map'
+            init_future = self.get_telemetry.call_async(telem_req)
+            if not self.wait_for_future(init_future, timeout_sec=2.0):
+                self.get_logger().error("Telemetry timeout")
+                return None
+            inicial = init_future.result()
             if frame_id == "body":
                 inicial.x += x
                 inicial.y += y
@@ -598,7 +616,12 @@ class Tools(Node):
                 inicial.y = y
                 inicial.z = z
             while rclpy.ok():
-                diferenca = self.get_telemetry(frame_id='map')
+                telem_req2 = GetTelemetry.Request()
+                telem_req2.frame_id = 'map'
+                diff_future = self.get_telemetry.call_async(telem_req2)
+                if not self.wait_for_future(diff_future, timeout_sec=1.0):
+                    continue
+                diferenca = diff_future.result()
                 diferenca.x, diferenca.y, diferenca.z = (inicial.x - diferenca.x), (inicial.y - diferenca.y), (inicial.z - diferenca.z)
                 distance = math.sqrt(diferenca.x ** 2 + diferenca.y ** 2 + (diferenca.z * z_participation) ** 2)
                 # self.get_logger().info(f"Distância até o alvo: {distance:.2f} m")
@@ -606,6 +629,7 @@ class Tools(Node):
                 if distance < tolerance:
                     self.get_logger().info("Alvo alcançado")
                     return (0, 'Sucesso')
+                time.sleep(0.1)
         except Exception as e:
             self.get_logger().error(f"Erro ao chamar o serviço de navegação: {e}")
 
@@ -616,7 +640,13 @@ class Tools(Node):
         for i in range(tentativas_maximas):  # Limita o número de tentativas
             try:
                 self.get_logger().info("Navegação iniciada")
-                inicial = self.get_telemetry(frame_id='map')
+                telem_req = GetTelemetry.Request()
+                telem_req.frame_id = 'map'
+                init_future = self.get_telemetry.call_async(telem_req)
+                if not self.wait_for_future(init_future, timeout_sec=2.0):
+                    self.get_logger().error("Telemetry timeout")
+                    return "failed"
+                inicial = init_future.result()
                 if frame_id == "body":
                     inicial.x += x
                     inicial.y += y
@@ -626,13 +656,22 @@ class Tools(Node):
                     inicial.y = y
                     inicial.z = z
                 while rclpy.ok():
-                    diferenca = self.get_telemetry(frame_id='map')
+                    telem_req2 = GetTelemetry.Request()
+                    telem_req2.frame_id = 'map'
+                    diff_future = self.get_telemetry.call_async(telem_req2)
+                    if not self.wait_for_future(diff_future, timeout_sec=1.0):
+                        continue
+                    diferenca = diff_future.result()
                     diferenca.x, diferenca.y, diferenca.z = (inicial.x - diferenca.x), (inicial.y - diferenca.y), (inicial.z - diferenca.z)
                     distance = math.sqrt(diferenca.x ** 2 + diferenca.y ** 2 + (diferenca.z * z_participation) ** 2)
                     if self.consecutive_detections > self.required_consecutive_detections:
-                        self.last_base_coordinates = self.get_telemetry(frame_id='map')
-                        self.last_base_coordinates.x = self.last_base_coordinates.x - (self.y_center - self.image_height//2)/self.fy * self.last_base_coordinates.z
-                        self.last_base_coordinates.y = self.last_base_coordinates.y - (self.x_center - self.image_width//2)/self.fx * self.last_base_coordinates.z
+                        map_req = GetTelemetry.Request()
+                        map_req.frame_id = 'map'
+                        map_future = self.get_telemetry.call_async(map_req)
+                        if self.wait_for_future(map_future, timeout_sec=1.0):
+                            self.last_base_coordinates = map_future.result()
+                            self.last_base_coordinates.x = self.last_base_coordinates.x - (self.y_center - self.image_height//2)/self.fy * self.last_base_coordinates.z
+                            self.last_base_coordinates.y = self.last_base_coordinates.y - (self.x_center - self.image_width//2)/self.fx * self.last_base_coordinates.z
                     # self.get_logger().info(f"Distância até o alvo: {distance:.2f} m")
                     # self.get_logger().info(f"X: {diferenca.x}\nY: {diferenca.y}\n Z: {diferenca.z}\n")
                     if (distance < tolerance):
@@ -644,6 +683,7 @@ class Tools(Node):
                         self.get_logger().info("Base encontrada e centrada. Alvo alcançado.")
                         self.navigateWait(x=0, y = 0, yaw=yaw, speed=speed, frame_id='body', auto_arm=False)
                         return "success"
+                    time.sleep(0.1)
             except Exception as e:
                 self.get_logger().error(f"Erro ao chamar o serviço de navegação: {e}")
                 
@@ -654,7 +694,13 @@ class Tools(Node):
         '''Navigate without interruption, wait until target is reached '''
         try:
             self.get_logger().info("Navegação iniciada")
-            inicial = self.get_telemetry(frame_id='map')
+            telem_req = GetTelemetry.Request()
+            telem_req.frame_id = 'map'
+            init_future = self.get_telemetry.call_async(telem_req)
+            if not self.wait_for_future(init_future, timeout_sec=2.0):
+                self.get_logger().error("Telemetry timeout")
+                return "failed"
+            inicial = init_future.result()
             if frame_id == "body":
                 inicial.x += x
                 inicial.y += y
@@ -664,14 +710,22 @@ class Tools(Node):
                 inicial.y = y
                 inicial.z = z
             while rclpy.ok():
-                diferenca = self.get_telemetry(frame_id='map')
+                telem_req2 = GetTelemetry.Request()
+                telem_req2.frame_id = 'map'
+                diff_future = self.get_telemetry.call_async(telem_req2)
+                if not self.wait_for_future(diff_future, timeout_sec=1.0):
+                    continue
+                diferenca = diff_future.result()
                 diferenca.x, diferenca.y, diferenca.z = (inicial.x - diferenca.x), (inicial.y - diferenca.y), (inicial.z - diferenca.z)
                 distance = math.sqrt(diferenca.x ** 2 + diferenca.y ** 2 + (diferenca.z * z_participation) ** 2)
                 if self.consecutive_detections > self.required_consecutive_detections:
-                    self.last_base_coordinates = self.get_telemetry(frame_id='map')
-                    self.last_base_coordinates.x = self.last_base_coordinates.x - (self.y_center - self.image_height//2)/self.fy * self.last_base_coordinates.z
-                    self.last_base_coordinates.y = self.last_base_coordinates.y - (self.x_center - self.image_width//2)/self.fx * self.last_base_coordinates.z
-                distance = math.sqrt(diferenca.x ** 2 + diferenca.y ** 2 + (diferenca.z * z_participation) ** 2)
+                    map_req = GetTelemetry.Request()
+                    map_req.frame_id = 'map'
+                    map_future = self.get_telemetry.call_async(map_req)
+                    if self.wait_for_future(map_future, timeout_sec=1.0):
+                        self.last_base_coordinates = map_future.result()
+                        self.last_base_coordinates.x = self.last_base_coordinates.x - (self.y_center - self.image_height//2)/self.fy * self.last_base_coordinates.z
+                        self.last_base_coordinates.y = self.last_base_coordinates.y - (self.x_center - self.image_width//2)/self.fx * self.last_base_coordinates.z
                 self.get_logger().info(f"Distância até o alvo: {distance:.2f} m")
                 if (distance < tolerance):
                     self.get_logger().info("Limite de movimento alcançado.")
@@ -680,6 +734,7 @@ class Tools(Node):
                     self.get_logger().info("Base encontrada e centrada. Alvo alcançado.")
                     self.navigateWait(x=0, y = 0, yaw=yaw, speed=speed, frame_id='body', auto_arm=False)
                     return "success"
+                time.sleep(0.1)
         except Exception as e:
             self.get_logger().error(f"Erro ao chamar o serviço de navegação: {e}")
                 

@@ -12,7 +12,7 @@ from std_msgs.msg import Int32, Float32, Bool
 from geometry_msgs.msg import Vector3
 from drone_navigate.srv import Navigate, GetTelemetry, SetYawRate
 from std_srvs.srv import Trigger, SetBool
-from ardupilot_msgs.srv import ModeSwitch
+from ardupilot_msgs.srv import ModeSwitch, ArmMotors, Takeoff as TakeoffSrv
 import colorful as cf
 from rclpy.callback_groups import ReentrantCallbackGroup
 
@@ -89,7 +89,9 @@ class Tools(Node):
         self.navigate = self.create_client(Navigate, 'avfl/navigate', callback_group=self.client_cb_group)
         self.set_yaw_rate = self.create_client(SetYawRate, 'avfl/set_yaw_rate', callback_group=self.client_cb_group)
         self.get_telemetry = self.create_client(GetTelemetry, 'avfl/get_telemetry', callback_group=self.client_cb_group)
-        self.mode_switch = self.create_client(ModeSwitch, '/ap/mode_switch', callback_group=self.client_cb_group)        
+        self.mode_switch = self.create_client(ModeSwitch, '/ap/mode_switch', callback_group=self.client_cb_group)
+        self.arm_client = self.create_client(ArmMotors, '/ap/arm_motors', callback_group=self.client_cb_group)
+        self.takeoff_client = self.create_client(TakeoffSrv, '/ap/experimental/takeoff', callback_group=self.client_cb_group)        
         
 
     def setServer(self):
@@ -190,15 +192,18 @@ class Tools(Node):
     # ==========================================
     # CENTERING ALGORITHMS
     # ==========================================
-    def centerOnGate(self, timeout=30.0):
+    def centerOnGate(self, timeout=30.0, acceptance_radius=0.10):
         """
         Center the drone on the gate using ArUco marker feedback.
+
+        Args:
+            timeout: Maximum time for centering (seconds)
+            acceptance_radius: Error threshold to consider centered (meters)
         """
-        self.get_logger().info("Starting gate centering...")
+        self.get_logger().info(f"Starting gate centering (tolerance={acceptance_radius:.2f}m)...")
         start_time = time.time()
         
         # CORREÇÃO: Definir tolerâncias locais para garantir consistência
-        acceptance_radius = 0.10  # 10cm de erro aceitável
         min_correction_move = 0.05 # Mínimo movimento para enviar comando (deadband)
         
         while rclpy.ok() and (time.time() - start_time) < timeout:
@@ -599,14 +604,14 @@ class Tools(Node):
                     self.navigateWait(x=0, y=0, z=-alignment_distance, speed=0.3,
                                     frame_id='body', tolerance=0.1, auto_arm=False)
                 elif detected_ids == {1, 3}:
-                    # Right pair -> Move LEFT
+                    # Right pair -> Move LEFT (y+ is left in body frame)
                     self.get_logger().info("Right markers {1, 3} detected -> Moving LEFT")
-                    self.navigateWait(x=0, y=-alignment_distance, z=0, speed=0.3,
+                    self.navigateWait(x=0, y=alignment_distance, z=0, speed=0.3,
                                     frame_id='body', tolerance=0.1, auto_arm=False)
                 elif detected_ids == {0, 2}:
-                    # Left pair -> Move RIGHT
+                    # Left pair -> Move RIGHT (y- is right in body frame)
                     self.get_logger().info("Left markers {0, 2} detected -> Moving RIGHT")
-                    self.navigateWait(x=0, y=alignment_distance, z=0, speed=0.3,
+                    self.navigateWait(x=0, y=-alignment_distance, z=0, speed=0.3,
                                     frame_id='body', tolerance=0.1, auto_arm=False)
                 else:
                     # Diagonal or unknown pair, use error-based movement
@@ -672,6 +677,55 @@ class Tools(Node):
         else:
             self.get_logger().error("Failed to advance through gate")
             return False
+
+    def takeoffWait(self, z, auto_arm=True):
+        """Switch to GUIDED, arm motors, and take off to the specified altitude."""
+        self.get_logger().info(f"Starting takeoff to {z}m...")
+
+        # Step 1: Switch to GUIDED mode
+        mode_req = ModeSwitch.Request()
+        mode_req.mode = 4  # GUIDED
+        mode_future = self.mode_switch.call_async(mode_req)
+        if not self.wait_for_future(mode_future, timeout_sec=5.0) or not mode_future.result().status:
+            self.get_logger().error("Failed to switch to GUIDED mode")
+            return False
+        self.get_logger().info("GUIDED mode activated")
+
+        # Step 2: Arm motors
+        if auto_arm:
+            arm_req = ArmMotors.Request()
+            arm_req.arm = True
+            arm_future = self.arm_client.call_async(arm_req)
+            if not self.wait_for_future(arm_future, timeout_sec=5.0) or not arm_future.result().result:
+                self.get_logger().error("Failed to arm motors")
+                return False
+            self.get_logger().info("Motors armed")
+
+        # Step 3: Send takeoff command
+        takeoff_req = TakeoffSrv.Request()
+        takeoff_req.alt = float(z)
+        takeoff_future = self.takeoff_client.call_async(takeoff_req)
+        if not self.wait_for_future(takeoff_future, timeout_sec=5.0):
+            self.get_logger().error("Takeoff service call timeout")
+            return False
+        self.get_logger().info("Takeoff command sent, waiting for altitude...")
+
+        # Step 4: Wait until target altitude is reached
+        start_time = time.time()
+        while rclpy.ok() and (time.time() - start_time) < 120.0:
+            telem_req = GetTelemetry.Request()
+            telem_req.frame_id = 'map'
+            telem_future = self.get_telemetry.call_async(telem_req)
+            if self.wait_for_future(telem_future, timeout_sec=1.0):
+                current_alt = telem_future.result().z
+                self.get_logger().info(f"Altitude: {current_alt:.2f}m / {z:.2f}m", throttle_duration_sec=1.0)
+                if abs(current_alt - z) < 0.5:
+                    self.get_logger().info(f"Target altitude reached: {current_alt:.2f}m")
+                    return True
+            time.sleep(0.2)
+
+        self.get_logger().error("Timeout waiting for target altitude")
+        return False
 
     def landDrone(self):
         """Switch to LAND mode to land the drone."""
