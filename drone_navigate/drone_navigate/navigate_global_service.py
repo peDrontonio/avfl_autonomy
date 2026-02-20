@@ -19,6 +19,7 @@ from geographic_msgs.msg import GeoPoseStamped
 from ardupilot_msgs.msg import GlobalPosition
 from ardupilot_msgs.srv import ArmMotors, ModeSwitch
 from drone_navigate.srv import NavigateGlobal
+from std_msgs.msg import Bool
 
 import tf2_ros
 import math
@@ -112,8 +113,8 @@ class NavigateGlobalServiceNode(Node):
         self.timer_callback_group = MutuallyExclusiveCallbackGroup()
 
         # --- Parameters ---
-        self.declare_parameter('position_tolerance', 0.2)  # meters (GPS accuracy)
-        self.declare_parameter('altitude_tolerance', 0.2)  # meters
+        self.declare_parameter('position_tolerance', 2.0)  # meters (GPS accuracy ~2-3m)
+        self.declare_parameter('altitude_tolerance', 2.0)  # meters
         self.declare_parameter('control_rate', 5.0)  # Hz (slower for GPS)
         self.declare_parameter('default_speed', 2.0)  # m/s
         self.declare_parameter('max_yaw_rate', 0.5)  # rad/s
@@ -178,6 +179,11 @@ class NavigateGlobalServiceNode(Node):
         self.global_pos_pub = self.create_publisher(
             GlobalPosition, 
             '/ap/cmd_gps_pose', 
+            10
+        )
+        self.nav_active_pub = self.create_publisher(
+            Bool,
+            'avfl/global_nav_active',
             10
         )
 
@@ -357,6 +363,8 @@ class NavigateGlobalServiceNode(Node):
             self.nav_speed = request.speed if request.speed > 0 else self.default_speed
             self.is_navigating = True
 
+        self.nav_active_pub.publish(Bool(data=True))
+
         # Broadcast navigate_target static TF so telemetry queries work
         if self.target_local is not None:
             t = TransformStamped()
@@ -430,7 +438,12 @@ class NavigateGlobalServiceNode(Node):
             # Get current state
             curr_lat = self.current_geopose.pose.position.latitude
             curr_lon = self.current_geopose.pose.position.longitude
-            curr_alt = self.current_geopose.pose.position.altitude
+            
+            # Use local pose z for altitude (relative to home, matches target)
+            if self.current_pose is not None:
+                curr_alt = self.current_pose.pose.position.z
+            else:
+                curr_alt = self.current_geopose.pose.position.altitude
             
             target_lat = self.target_lat
             target_lon = self.target_lon
@@ -465,6 +478,7 @@ class NavigateGlobalServiceNode(Node):
                 self.target_alt = None
                 self.target_yaw = None
                 self.is_navigating = False
+            self.nav_active_pub.publish(Bool(data=False))
             return
 
         # Send position command continuously
