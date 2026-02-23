@@ -58,3 +58,66 @@
   ros_type_name: "sensor_msgs/msg/Imu"
   gz_type_name: "gz.msgs.IMU"
   direction: GZ_TO_ROS
+
+# ====================================================================
+# Intel RealSense D455i — Stereo IR + Depth + Color + IMU
+# ====================================================================
+
+# D455 Left IR (infra1) — grayscale stereo pair
+- ros_topic_name: "d455/infra1/image_rect_raw"
+  gz_topic_name: "/d455/infra1/image_rect_raw"
+  ros_type_name: "sensor_msgs/msg/Image"
+  gz_type_name: "gz.msgs.Image"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "d455/infra1/camera_info"
+  gz_topic_name: "/d455/infra1/image_rect_raw/camera_info"
+  ros_type_name: "sensor_msgs/msg/CameraInfo"
+  gz_type_name: "gz.msgs.CameraInfo"
+  direction: GZ_TO_ROS
+
+# D455 Right IR (infra2) — grayscale stereo pair
+- ros_topic_name: "d455/infra2/image_rect_raw"
+  gz_topic_name: "/d455/infra2/image_rect_raw"
+  ros_type_name: "sensor_msgs/msg/Image"
+  gz_type_name: "gz.msgs.Image"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "d455/infra2/camera_info"
+  gz_topic_name: "/d455/infra2/image_rect_raw/camera_info"
+  ros_type_name: "sensor_msgs/msg/CameraInfo"
+  gz_type_name: "gz.msgs.CameraInfo"
+  direction: GZ_TO_ROS
+
+# D455 Depth camera
+- ros_topic_name: "d455/depth/image_rect_raw"
+  gz_topic_name: "/d455/depth/image_rect_raw"
+  ros_type_name: "sensor_msgs/msg/Image"
+  gz_type_name: "gz.msgs.Image"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "d455/depth/camera_info"
+  gz_topic_name: "/d455/depth/image_rect_raw/camera_info"
+  ros_type_name: "sensor_msgs/msg/CameraInfo"
+  gz_type_name: "gz.msgs.CameraInfo"
+  direction: GZ_TO_ROS
+
+# D455 Color camera (RGB)
+- ros_topic_name: "d455/color/image_raw"
+  gz_topic_name: "/d455/color/image_raw"
+  ros_type_name: "sensor_msgs/msg/Image"
+  gz_type_name: "gz.msgs.Image"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "d455/color/camera_info"
+  gz_topic_name: "/d455/color/image_raw/camera_info"
+  ros_type_name: "sensor_msgs/msg/CameraInfo"
+  gz_type_name: "gz.msgs.CameraInfo"
+  direction: GZ_TO_ROS
+
+# D455 IMU (BMI055 6-axis: accel + gyro)
+- ros_topic_name: "d455/imu"
+  gz_topic_name: "/world/map/model/nelore/link/d455_imu_optical_frame/sensor/d455_imu/imu"
+  ros_type_name: "sensor_msgs/msg/Imu"
+  gz_type_name: "gz.msgs.IMU"
+  direction: GZ_TO_ROS
