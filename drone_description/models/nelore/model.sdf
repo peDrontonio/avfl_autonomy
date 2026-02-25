@@ -77,7 +77,6 @@
       <sensor name="d455_infra1" type="camera">
         <gz_frame_id>d455_infra1_optical_frame</gz_frame_id>
         <camera>
-          <horizontal_fov>1.518</horizontal_fov>  <!-- 87 degrees -->
           <image>
             <width>640</width>
             <height>480</height>
@@ -142,7 +141,6 @@
       <sensor name="d455_infra2" type="camera">
         <gz_frame_id>d455_infra2_optical_frame</gz_frame_id>
         <camera>
-          <horizontal_fov>1.518</horizontal_fov>  <!-- 87 degrees -->
           <image>
             <width>640</width>
             <height>480</height>
