@@ -12,9 +12,13 @@
     <!-- ============================================================ -->
 
     <!-- D455 body link (main physical body, front-facing) -->
-    <!-- Pose: 0.1m forward from base_link center -->
+    <!-- Pose: bottom_screw_frame at 0.1m forward + link_joint offset from xacro:            -->
+    <!--   d455_mesh_x_offset = mount_from_center(0.0158) - glass_to_front(0.0001)           -->
+    <!--                        - zero_depth_to_glass(0.00455) = 0.01115                      -->
+    <!--   d455_cam_depth_py  = 0.0475                                                        -->
+    <!--   d455_cam_depth_pz  = cam_height/2 = 0.029/2 = 0.0145                              -->
     <link name="d455_link">
-      <pose>0.1 0 0 0 0 0</pose>
+      <pose>0.11115 0.0475 0.0145 0 0 0</pose>
       <inertial>
         <mass>0.072</mass>
         <inertia>
@@ -27,7 +31,9 @@
         </inertia>
       </inertial>
       <visual name="d455_visual">
-        <pose>0.013 0.0475 0.0145 0 0 0</pose> <!-- center the STL mesh -->
+        <!-- xyz = (zero_depth_to_glass + glass_to_front, -cam_depth_py, 0) = (0.00465, -0.0475, 0) -->
+        <!-- rpy = (pi/2, 0, pi/2) — matches xacro visual origin rpy="${M_PI/2} 0 ${M_PI/2}"       -->
+        <pose>0.00465 -0.0475 0 1.5708 0 1.5708</pose>
         <geometry>
           <mesh>
             <uri>meshes/d455.stl</uri>
@@ -41,6 +47,8 @@
         </material>
       </visual>
       <collision name="d455_collision">
+        <!-- xyz = (zero_depth_to_glass - cam_depth/2, -cam_depth_py, 0) = (-0.00845, -0.0475, 0) -->
+        <pose>-0.00845 -0.0475 0 0 0 0</pose>
         <geometry>
           <box>
             <size>0.026 0.124 0.029</size>
@@ -55,24 +63,10 @@
 
     <!-- D455 Left IR camera (infra1) — reference stereo sensor -->
     <!-- Located at the depth module origin (left side of the body) -->
+    <!-- Sensor is placed here (X-forward) so the camera looks forward in Gazebo. -->
+    <!-- gz_frame_id refers to the optical frame for correct ROS TF convention.   -->
     <link name="d455_infra1_frame">
       <pose relative_to="d455_link">0 0 0 0 0 0</pose>
-      <inertial>
-        <mass>0.001</mass>
-        <inertia>
-          <ixx>0.000001</ixx><ixy>0</ixy><ixz>0</ixz>
-          <iyy>0.000001</iyy><iyz>0</iyz><izz>0.000001</izz>
-        </inertia>
-      </inertial>
-    </link>
-    <joint name="d455_infra1_joint" type="fixed">
-      <parent>d455_link</parent>
-      <child>d455_infra1_frame</child>
-    </joint>
-
-    <!-- Left IR optical frame (ROS convention: Z-forward, X-right, Y-down) -->
-    <link name="d455_infra1_optical_frame">
-      <pose relative_to="d455_infra1_frame">0 0 0 -1.5708 0 -1.5708</pose>
       <inertial>
         <mass>0.001</mass>
         <inertia>
@@ -114,14 +108,14 @@
         <topic>/d455/infra1/image_rect_raw</topic>
       </sensor>
     </link>
-    <joint name="d455_infra1_optical_joint" type="fixed">
-      <parent>d455_infra1_frame</parent>
-      <child>d455_infra1_optical_frame</child>
+    <joint name="d455_infra1_joint" type="fixed">
+      <parent>d455_link</parent>
+      <child>d455_infra1_frame</child>
     </joint>
 
-    <!-- D455 Right IR camera (infra2) — 95mm baseline from left IR -->
-    <link name="d455_infra2_frame">
-      <pose relative_to="d455_link">0 -0.095 0 0 0 0</pose>
+    <!-- Left IR optical frame (ROS convention: Z-forward, X-right, Y-down) — TF only -->
+    <link name="d455_infra1_optical_frame">
+      <pose relative_to="d455_infra1_frame">0 0 0 -1.5708 0 -1.5708</pose>
       <inertial>
         <mass>0.001</mass>
         <inertia>
@@ -130,14 +124,14 @@
         </inertia>
       </inertial>
     </link>
-    <joint name="d455_infra2_joint" type="fixed">
-      <parent>d455_link</parent>
-      <child>d455_infra2_frame</child>
+    <joint name="d455_infra1_optical_joint" type="fixed">
+      <parent>d455_infra1_frame</parent>
+      <child>d455_infra1_optical_frame</child>
     </joint>
 
-    <!-- Right IR optical frame -->
-    <link name="d455_infra2_optical_frame">
-      <pose relative_to="d455_infra2_frame">0 0 0 -1.5708 0 -1.5708</pose>
+    <!-- D455 Right IR camera (infra2) — 95mm baseline from left IR -->
+    <link name="d455_infra2_frame">
+      <pose relative_to="d455_link">0 -0.095 0 0 0 0</pose>
       <inertial>
         <mass>0.001</mass>
         <inertia>
@@ -179,14 +173,14 @@
         <topic>/d455/infra2/image_rect_raw</topic>
       </sensor>
     </link>
-    <joint name="d455_infra2_optical_joint" type="fixed">
-      <parent>d455_infra2_frame</parent>
-      <child>d455_infra2_optical_frame</child>
+    <joint name="d455_infra2_joint" type="fixed">
+      <parent>d455_link</parent>
+      <child>d455_infra2_frame</child>
     </joint>
 
-    <!-- D455 Depth camera (aligned to left IR / depth module origin) -->
-    <link name="d455_depth_frame">
-      <pose relative_to="d455_link">0 0 0 0 0 0</pose>
+    <!-- Right IR optical frame — TF only -->
+    <link name="d455_infra2_optical_frame">
+      <pose relative_to="d455_infra2_frame">0 0 0 -1.5708 0 -1.5708</pose>
       <inertial>
         <mass>0.001</mass>
         <inertia>
@@ -195,13 +189,14 @@
         </inertia>
       </inertial>
     </link>
-    <joint name="d455_depth_joint" type="fixed">
-      <parent>d455_link</parent>
-      <child>d455_depth_frame</child>
+    <joint name="d455_infra2_optical_joint" type="fixed">
+      <parent>d455_infra2_frame</parent>
+      <child>d455_infra2_optical_frame</child>
     </joint>
 
-    <link name="d455_depth_optical_frame">
-      <pose relative_to="d455_depth_frame">0 0 0 -1.5708 0 -1.5708</pose>
+    <!-- D455 Depth camera (aligned to left IR / depth module origin) -->
+    <link name="d455_depth_frame">
+      <pose relative_to="d455_link">0 0 0 0 0 0</pose>
       <inertial>
         <mass>0.001</mass>
         <inertia>
@@ -243,14 +238,14 @@
         <topic>/d455/depth/image_rect_raw</topic>
       </sensor>
     </link>
-    <joint name="d455_depth_optical_joint" type="fixed">
-      <parent>d455_depth_frame</parent>
-      <child>d455_depth_optical_frame</child>
+    <joint name="d455_depth_joint" type="fixed">
+      <parent>d455_link</parent>
+      <child>d455_depth_frame</child>
     </joint>
 
-    <!-- D455 Color camera (RGB) — offset 59mm right from depth module -->
-    <link name="d455_color_frame">
-      <pose relative_to="d455_link">0 -0.059 0 0 0 0</pose>
+    <!-- Depth optical frame — TF only -->
+    <link name="d455_depth_optical_frame">
+      <pose relative_to="d455_depth_frame">0 0 0 -1.5708 0 -1.5708</pose>
       <inertial>
         <mass>0.001</mass>
         <inertia>
@@ -259,13 +254,14 @@
         </inertia>
       </inertial>
     </link>
-    <joint name="d455_color_joint" type="fixed">
-      <parent>d455_link</parent>
-      <child>d455_color_frame</child>
+    <joint name="d455_depth_optical_joint" type="fixed">
+      <parent>d455_depth_frame</parent>
+      <child>d455_depth_optical_frame</child>
     </joint>
 
-    <link name="d455_color_optical_frame">
-      <pose relative_to="d455_color_frame">0 0 0 -1.5708 0 -1.5708</pose>
+    <!-- D455 Color camera (RGB) — offset 59mm right from depth module -->
+    <link name="d455_color_frame">
+      <pose relative_to="d455_link">0 -0.059 0 0 0 0</pose>
       <inertial>
         <mass>0.001</mass>
         <inertia>
@@ -307,14 +303,14 @@
         <topic>/d455/color/image_raw</topic>
       </sensor>
     </link>
-    <joint name="d455_color_optical_joint" type="fixed">
-      <parent>d455_color_frame</parent>
-      <child>d455_color_optical_frame</child>
+    <joint name="d455_color_joint" type="fixed">
+      <parent>d455_link</parent>
+      <child>d455_color_frame</child>
     </joint>
 
-    <!-- D455 IMU (BMI055 6-axis, same position as real D455) -->
-    <link name="d455_imu_frame">
-      <pose relative_to="d455_link">-0.01602 -0.03022 0.0074 0 0 0</pose>
+    <!-- Color optical frame — TF only -->
+    <link name="d455_color_optical_frame">
+      <pose relative_to="d455_color_frame">0 0 0 -1.5708 0 -1.5708</pose>
       <inertial>
         <mass>0.001</mass>
         <inertia>
@@ -323,13 +319,14 @@
         </inertia>
       </inertial>
     </link>
-    <joint name="d455_imu_joint" type="fixed">
-      <parent>d455_link</parent>
-      <child>d455_imu_frame</child>
+    <joint name="d455_color_optical_joint" type="fixed">
+      <parent>d455_color_frame</parent>
+      <child>d455_color_optical_frame</child>
     </joint>
 
-    <link name="d455_imu_optical_frame">
-      <pose relative_to="d455_imu_frame">0 0 0 -1.5708 0 -1.5708</pose>
+    <!-- D455 IMU (BMI055 6-axis, same position as real D455) -->
+    <link name="d455_imu_frame">
+      <pose relative_to="d455_link">-0.01602 -0.03022 0.0074 0 0 0</pose>
       <inertial>
         <mass>0.001</mass>
         <inertia>
@@ -355,6 +352,22 @@
           </linear_acceleration>
         </imu>
       </sensor>
+    </link>
+    <joint name="d455_imu_joint" type="fixed">
+      <parent>d455_link</parent>
+      <child>d455_imu_frame</child>
+    </joint>
+
+    <!-- IMU optical frame — TF only -->
+    <link name="d455_imu_optical_frame">
+      <pose relative_to="d455_imu_frame">0 0 0 -1.5708 0 -1.5708</pose>
+      <inertial>
+        <mass>0.001</mass>
+        <inertia>
+          <ixx>0.000001</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.000001</iyy><iyz>0</iyz><izz>0.000001</izz>
+        </inertia>
+      </inertial>
     </link>
     <joint name="d455_imu_optical_joint" type="fixed">
       <parent>d455_imu_frame</parent>
