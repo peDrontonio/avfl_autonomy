@@ -1,0 +1,30 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <model name="hangar">
+    <static>true</static>
+    <link name="link">
+
+      <!-- Colisão baseada no arquivo STL -->
+      <collision name="collision">
+        <geometry>
+          <mesh>
+            <uri>model://hangar/meshes/HANGAR.stl</uri>
+            <scale>0.55 0.55 0.55</scale>
+          </mesh>
+        </geometry>
+      </collision>
+
+      <!-- Visual baseado no arquivo DAE (Collada) -->
+      <!-- Sem bloco <material> aqui para que os materiais internos do DAE sejam usados -->
+      <visual name="visual">
+        <geometry>
+          <mesh>
+            <uri>model://hangar/meshes/hangar.dae</uri>
+            <scale>0.55 0.55 0.55</scale>
+          </mesh>
+        </geometry>
+      </visual>
+
+    </link>
+  </model>
+</sdf>

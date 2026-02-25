@@ -8,7 +8,9 @@
       <real_time_factor>1.0</real_time_factor>
     </physics>
     
-    <!-- Plugins -->
+    <!-- ============================================================
+         PLUGINS  (sensor plugins necessários para o drone Nelore)
+    ============================================================ -->
     <plugin
       filename="gz-sim-physics-system"
       name="gz::sim::systems::Physics">
@@ -39,21 +41,29 @@
       name="gz::sim::systems::NavSat">
     </plugin>
 
-    <!-- Lighting -->
-    <light type="point" name="sun">
+    <!-- ============================================================
+         ILUMINAÇÃO
+    ============================================================ -->
+
+    <!-- Sol: luz direcional com ângulo de meio-dia -->
+    <light type="directional" name="sun">
       <cast_shadows>true</cast_shadows>
-      <pose>0 5 8 0 0 0</pose>
-      <diffuse>1.0 1.0 1.0 1</diffuse>
-      <specular>0.6 0.6 0.6 1</specular>
-      <attenuation>
-        <range>100</range>
-        <constant>0.08</constant>
-        <linear>0.008</linear>
-        <quadratic>0.00008</quadratic>
-      </attenuation>
+      <pose>0 0 500 0 0 0</pose>
+      <direction>0.3 0.1 -1.0</direction>
+      <diffuse>0.95 0.92 0.85 1</diffuse>
+      <specular>0.4 0.4 0.35 1</specular>
     </light>
 
-    <!-- Additional light focused on the arch area -->
+    <!-- Luz ambiente suave para preencher sombras -->
+    <light type="directional" name="ambient_fill">
+      <cast_shadows>false</cast_shadows>
+      <pose>0 0 100 0 0 0</pose>
+      <direction>-0.2 -0.1 -1.0</direction>
+      <diffuse>0.35 0.40 0.48 1</diffuse>
+      <specular>0.05 0.05 0.05 1</specular>
+    </light>
+
+    <!-- Luz extra na área dos ArUco markers -->
     <light type="point" name="arch_light">
       <cast_shadows>false</cast_shadows>
       <pose>0 2 3 0 0 0</pose>
@@ -67,7 +77,7 @@
       </attenuation>
     </light>
 
-    <!-- Additional light for lower markers -->
+    <!-- Luz extra para markers inferiores -->
     <light type="point" name="lower_marker_light">
       <cast_shadows>false</cast_shadows>
       <pose>0 2 1.5 0 0 0</pose>
@@ -81,6 +91,49 @@
       </attenuation>
     </light>
 
+    <!-- Luzes internas do hangar -->
+    <light type="point" name="hangar_light_1">
+      <cast_shadows>false</cast_shadows>
+      <pose>8 -60 18 0 0 0</pose>
+      <diffuse>1.0 0.95 0.85 1</diffuse>
+      <specular>0.5 0.5 0.4 1</specular>
+      <attenuation>
+        <range>40</range>
+        <constant>0.3</constant>
+        <linear>0.02</linear>
+        <quadratic>0.005</quadratic>
+      </attenuation>
+    </light>
+
+    <light type="point" name="hangar_light_2">
+      <cast_shadows>false</cast_shadows>
+      <pose>-8 -60 18 0 0 0</pose>
+      <diffuse>1.0 0.95 0.85 1</diffuse>
+      <specular>0.5 0.5 0.4 1</specular>
+      <attenuation>
+        <range>40</range>
+        <constant>0.3</constant>
+        <linear>0.02</linear>
+        <quadratic>0.005</quadratic>
+      </attenuation>
+    </light>
+
+    <light type="point" name="hangar_light_center">
+      <cast_shadows>false</cast_shadows>
+      <pose>0 -60 20 0 0 0</pose>
+      <diffuse>1.0 0.98 0.92 1</diffuse>
+      <specular>0.6 0.6 0.5 1</specular>
+      <attenuation>
+        <range>50</range>
+        <constant>0.2</constant>
+        <linear>0.015</linear>
+        <quadratic>0.003</quadratic>
+      </attenuation>
+    </light>
+
+    <!-- ============================================================
+         GPS / COORDENADAS ESFÉRICAS
+    ============================================================ -->
     <spherical_coordinates>
       <latitude_deg>-35.3632621</latitude_deg>
       <longitude_deg>149.1652374</longitude_deg>
@@ -89,52 +142,29 @@
       <surface_model>EARTH_WGS84</surface_model>
     </spherical_coordinates>
 
-    <!-- Ground Plane -->
-    <model name="ground_plane">
-      <static>true</static>
-      <link name="link">
-        <collision name="collision">
-          <geometry>
-            <plane>
-              <normal>0 0 1</normal>
-              <size>100 100</size>
-            </plane>
-          </geometry>
-        </collision>
-        <visual name="visual">
-          <geometry>
-            <plane>
-              <normal>0 0 1</normal>
-              <size>100 100</size>
-            </plane>
-          </geometry>
-          <material>
-            <ambient>0.8 0.8 0.8 1</ambient>
-            <diffuse>0.8 0.8 0.8 1</diffuse>
-            <specular>0.8 0.8 0.8 1</specular>
-          </material>
-        </visual>
-      </link>
-    </model>
+    <!-- ============================================================
+         TERRENO  (grama texturizada)
+    ============================================================ -->
+    <include>
+      <uri>model://grass_ground</uri>
+      <name>ground_plane</name>
+      <pose>0 0 0 0 0 0</pose>
+    </include>
 
-    <!-- Parede 1 - Frente (eixo Y positivo) -->
+    <!-- ============================================================
+         PAREDES DO CAMPO
+    ============================================================ -->
+
+    <!-- Parede 1 - Frente -->
     <model name="wall_front">
       <static>true</static>
       <pose>10 0 1 0 0 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry>
-            <box>
-              <size>0.2 30 2</size>
-            </box>
-          </geometry>
+          <geometry><box><size>0.2 30 2</size></box></geometry>
         </collision>
         <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.2 30 2</size>
-            </box>
-          </geometry>
+          <geometry><box><size>0.2 30 2</size></box></geometry>
           <material>
             <ambient>0.7 0.7 0.7 1</ambient>
             <diffuse>0.7 0.7 0.7 1</diffuse>
@@ -144,24 +174,16 @@
       </link>
     </model>
 
-    <!-- Parede 2 - Trás (eixo Y negativo) -->
+    <!-- Parede 2 - Trás -->
     <model name="wall_back">
       <static>true</static>
       <pose>-10 0 1 0 0 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry>
-            <box>
-              <size>0.2 30 2</size>
-            </box>
-          </geometry>
+          <geometry><box><size>0.2 30 2</size></box></geometry>
         </collision>
         <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.2 30 2</size>
-            </box>
-          </geometry>
+          <geometry><box><size>0.2 30 2</size></box></geometry>
           <material>
             <ambient>0.7 0.7 0.7 1</ambient>
             <diffuse>0.7 0.7 0.7 1</diffuse>
@@ -171,24 +193,16 @@
       </link>
     </model>
 
-    <!-- Parede 3 - Esquerda (eixo X positivo) -->
+    <!-- Parede 3 - Esquerda -->
     <model name="wall_left">
       <static>true</static>
       <pose>0 10 1 0 0 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry>
-            <box>
-              <size>30 0.2 2</size>
-            </box>
-          </geometry>
+          <geometry><box><size>30 0.2 2</size></box></geometry>
         </collision>
         <visual name="visual">
-          <geometry>
-            <box>
-              <size>30 0.2 2</size>
-            </box>
-          </geometry>
+          <geometry><box><size>30 0.2 2</size></box></geometry>
           <material>
             <ambient>0.7 0.7 0.7 1</ambient>
             <diffuse>0.7 0.7 0.7 1</diffuse>
@@ -198,24 +212,16 @@
       </link>
     </model>
 
-    <!-- Parede 4 - Direita (eixo X negativo) -->
+    <!-- Parede 4 - Direita -->
     <model name="wall_right">
       <static>true</static>
       <pose>0 -10 1 0 0 0</pose>
       <link name="link">
         <collision name="collision">
-          <geometry>
-            <box>
-              <size>30 0.2 2</size>
-            </box>
-          </geometry>
+          <geometry><box><size>30 0.2 2</size></box></geometry>
         </collision>
         <visual name="visual">
-          <geometry>
-            <box>
-              <size>30 0.2 2</size>
-            </box>
-          </geometry>
+          <geometry><box><size>30 0.2 2</size></box></geometry>
           <material>
             <ambient>0.7 0.7 0.7 1</ambient>
             <diffuse>0.7 0.7 0.7 1</diffuse>
@@ -225,24 +231,19 @@
       </link>
     </model>
 
-    <!-- Quadrado flutuante a 1.5m - Lado 1 (Frente) -->
+    <!-- ============================================================
+         QUADRADO FLUTUANTE  (estrutura dos ArUco markers)
+    ============================================================ -->
+
     <model name="floating_square_front">
       <static>true</static>
       <pose>2.75 2.75 2 0 0 1.5707963267948966</pose>
       <link name="link">
         <collision name="collision">
-          <geometry>
-            <box>
-              <size>0.1 0.1 1.5</size>
-            </box>
-          </geometry>
+          <geometry><box><size>0.1 0.1 1.5</size></box></geometry>
         </collision>
         <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.1 0.1 1.5</size>
-            </box>
-          </geometry>
+          <geometry><box><size>0.1 0.1 1.5</size></box></geometry>
           <material>
             <ambient>0.8 0.4 0.2 1</ambient>
             <diffuse>0.8 0.4 0.2 1</diffuse>
@@ -252,24 +253,15 @@
       </link>
     </model>
 
-    <!-- Quadrado flutuante a 1.5m - Lado 2 (Trás) -->
     <model name="floating_square_back">
       <static>true</static>
       <pose>2.75 1.25 2 0 0 1.5707963267948966</pose>
       <link name="link">
         <collision name="collision">
-          <geometry>
-            <box>
-              <size>0.1 0.1 1.5</size>
-            </box>
-          </geometry>
+          <geometry><box><size>0.1 0.1 1.5</size></box></geometry>
         </collision>
         <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.1 0.1 1.5</size>
-            </box>
-          </geometry>
+          <geometry><box><size>0.1 0.1 1.5</size></box></geometry>
           <material>
             <ambient>0.8 0.4 0.2 1</ambient>
             <diffuse>0.8 0.4 0.2 1</diffuse>
@@ -279,24 +271,15 @@
       </link>
     </model>
 
-    <!-- Quadrado flutuante a 1.5m - Lado 3 (Esquerda) -->
     <model name="floating_square_left">
       <static>true</static>
       <pose>2.75 2 2.75 0 1.57 1.5707963267948966</pose>
       <link name="link">
         <collision name="collision">
-          <geometry>
-            <box>
-              <size>0.1 0.1 1.5</size>
-            </box>
-          </geometry>
+          <geometry><box><size>0.1 0.1 1.5</size></box></geometry>
         </collision>
         <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.1 0.1 1.5</size>
-            </box>
-          </geometry>
+          <geometry><box><size>0.1 0.1 1.5</size></box></geometry>
           <material>
             <ambient>0.8 0.4 0.2 1</ambient>
             <diffuse>0.8 0.4 0.2 1</diffuse>
@@ -306,24 +289,15 @@
       </link>
     </model>
 
-    <!-- Quadrado flutuante a 1.5m - Lado 4 (Direita) -->
     <model name="floating_square_right">
       <static>true</static>
       <pose>2.75 2 1.25 0 1.57 1.5707963267948966</pose>
       <link name="link">
         <collision name="collision">
-          <geometry>
-            <box>
-              <size>0.1 0.1 1.5</size>
-            </box>
-          </geometry>
+          <geometry><box><size>0.1 0.1 1.5</size></box></geometry>
         </collision>
         <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.1 0.1 1.5</size>
-            </box>
-          </geometry>
+          <geometry><box><size>0.1 0.1 1.5</size></box></geometry>
           <material>
             <ambient>0.8 0.4 0.2 1</ambient>
             <diffuse>0.8 0.4 0.2 1</diffuse>
@@ -333,42 +307,435 @@
       </link>
     </model>
 
-    <!-- Marcador ArUco 0 - Front Bottom Corner -->
+    <!-- ============================================================
+         ARUCO MARKERS
+    ============================================================ -->
+
     <include>
       <uri>model://aruco_marker_0</uri>
       <name>aruco_marker_0</name>
       <pose>2.65 2.75 1.25 0 1.57079 3.14159</pose>
     </include>
 
-    <!-- Marcador ArUco 1 - Back Bottom Corner -->
     <include>
       <uri>model://aruco_marker_1</uri>
       <name>aruco_marker_1</name>
       <pose>2.65 1.25 1.25 0 1.57079 3.14159</pose>
     </include>
 
-    <!-- Marcador ArUco 2 - Front Top Corner -->
     <include>
       <uri>model://aruco_marker_2</uri>
       <name>aruco_marker_2</name>
       <pose>2.65 2.75 2.75 0 1.57079 3.14159</pose>
     </include>
 
-    <!-- Marcador ArUco 3 - Back Top Corner -->
     <include>
       <uri>model://aruco_marker_3</uri>
       <name>aruco_marker_3</name>
       <pose>2.65 1.25 2.75 0 1.57079 3.14159</pose>
     </include>
 
-    <!-- Helipad Landing Base (outside walls) -->
+    <!-- ============================================================
+         HELIPAD
+    ============================================================ -->
     <include>
       <uri>model://h_base</uri>
       <name>helipad</name>
       <pose>15 0 0.005 0 0 0</pose>
     </include>
 
-    <!-- Nelore Drone -->
+    <!-- ================================================================ -->
+    <!--  HANGAR  (centro: x=0, y=-60, roll=-90°)                        -->
+    <!-- ================================================================ -->
+    <include>
+      <uri>model://hangar</uri>
+      <name>hangar</name>
+      <pose>0 -60 7 -1.5707963 0 0</pose>
+    </include>
+
+    <!-- ============================================================
+         LAYOUT INTERIOR DO HANGAR
+         Dimensões reais (DAE c/ scale 0.55): 44m × 22m
+         Entrada: y ≈ -49  |  Fundo: y ≈ -71
+    ============================================================ -->
+
+    <!-- PRATELEIRAS — parede esquerda -->
+    <include>
+      <uri>model://shelves</uri>
+      <name>shelf_left_1</name>
+      <pose>-20.7 -52 0 0 0 1.5707963</pose>
+    </include>
+    <include>
+      <uri>model://shelves</uri>
+      <name>shelf_left_2</name>
+      <pose>-20.7 -56 0 0 0 1.5707963</pose>
+    </include>
+    <include>
+      <uri>model://shelves</uri>
+      <name>shelf_left_3</name>
+      <pose>8.3 -63 0 0 0 1.5707963</pose>
+    </include>
+    <include>
+      <uri>model://shelves</uri>
+      <name>shelf_left_4</name>
+      <pose>-20.7 -54 0 0 0 1.5707963</pose>
+    </include>
+    <include>
+      <uri>model://shelves</uri>
+      <name>shelf_left_5</name>
+      <pose>-20.7 -58 0 0 0 1.5707963</pose>
+    </include>
+
+    <!-- PRATELEIRAS — parede direita -->
+    <include>
+      <uri>model://shelves</uri>
+      <name>shelf_right_1</name>
+      <pose>18.7 -50 0 0 0 3.141592</pose>
+    </include>
+    <include>
+      <uri>model://shelves</uri>
+      <name>shelf_right_2</name>
+      <pose>11.7 -54 0 0 0 0.785398</pose>
+    </include>
+    <include>
+      <uri>model://shelves</uri>
+      <name>shelf_right_3</name>
+      <pose>15.7 -67 0 0 0 -0.785398</pose>
+    </include>
+    <include>
+      <uri>model://shelves</uri>
+      <name>shelf_right_4</name>
+      <pose>-13.3 -64 0 0 0 1.5707963</pose>
+    </include>
+    <include>
+      <uri>model://shelves</uri>
+      <name>shelf_right_5</name>
+      <pose>18.7 -70 0 0 0 3.141592</pose>
+    </include>
+
+    <!-- PALLETS COM CAIXAS — fileira central -->
+    <include>
+      <uri>model://pallet_box_mobile</uri>
+      <name>pallet_1</name>
+      <pose>0 -53 0 0 0 0</pose>
+    </include>
+    <include>
+      <uri>model://pallet_box_mobile</uri>
+      <name>pallet_2</name>
+      <pose>0 -57 0 0 0 0</pose>
+    </include>
+    <include>
+      <uri>model://pallet_box_mobile</uri>
+      <name>pallet_3</name>
+      <pose>0 -61 0 0 0 0</pose>
+    </include>
+
+    <!-- PALLETS — segunda fileira (x=+3) -->
+    <include>
+      <uri>model://pallet_box_mobile</uri>
+      <name>pallet_4</name>
+      <pose>3 -53 0 0 0 0</pose>
+    </include>
+    <include>
+      <uri>model://pallet_box_mobile</uri>
+      <name>pallet_5</name>
+      <pose>3 -57 0 0 0 0</pose>
+    </include>
+    <include>
+      <uri>model://pallet_box_mobile</uri>
+      <name>pallet_6</name>
+      <pose>3 -61 0 0 0 0</pose>
+    </include>
+
+    <!-- PALLETS — terceira fileira (x=-3) -->
+    <include>
+      <uri>model://pallet_box_mobile</uri>
+      <name>pallet_7</name>
+      <pose>-3 -55 0 0 0 0</pose>
+    </include>
+    <include>
+      <uri>model://pallet_box_mobile</uri>
+      <name>pallet_8</name>
+      <pose>-3 -59 0 0 0 0</pose>
+    </include>
+    <include>
+      <uri>model://pallet_box_mobile</uri>
+      <name>pallet_9</name>
+      <pose>-3 -63 0 0 0 0</pose>
+    </include>
+
+    <!-- BARRIS — triângulo perto da entrada, lado esquerdo -->
+    <include>
+      <uri>model://construction_barrel</uri>
+      <name>barrel_1</name>
+      <pose>-3 -50 0 0 0 0</pose>
+    </include>
+    <include>
+      <uri>model://construction_barrel</uri>
+      <name>barrel_2</name>
+      <pose>-1.5 -50 0 0 0 0.7</pose>
+    </include>
+    <include>
+      <uri>model://construction_barrel</uri>
+      <name>barrel_3</name>
+      <pose>-2.25 -51.3 0 0 0 1.4</pose>
+    </include>
+
+    <!-- BARRIS — grupo lado direito perto da entrada -->
+    <include>
+      <uri>model://construction_barrel</uri>
+      <name>barrel_4</name>
+      <pose>3 -50 0 0 0 0</pose>
+    </include>
+    <include>
+      <uri>model://construction_barrel</uri>
+      <name>barrel_5</name>
+      <pose>4.5 -50 0 0 0 0.5</pose>
+    </include>
+    <include>
+      <uri>model://construction_barrel</uri>
+      <name>barrel_6</name>
+      <pose>5.5 -51.5 0 0 0 1.0</pose>
+    </include>
+    <include>
+      <uri>model://construction_barrel</uri>
+      <name>barrel_7</name>
+      <pose>3.75 -51.5 0 0 0 0.2</pose>
+    </include>
+
+    <!-- BARRIS — fileira ao fundo direito -->
+    <include>
+      <uri>model://construction_barrel</uri>
+      <name>barrel_8</name>
+      <pose>6 -68 0 0 0 0</pose>
+    </include>
+    <include>
+      <uri>model://construction_barrel</uri>
+      <name>barrel_9</name>
+      <pose>7 -68 0 0 0 0.9</pose>
+    </include>
+
+    <!-- CAIXAS DE PAPELÃO — sobre pallets fileira 1 (x=0) -->
+    <include>
+      <uri>model://cardboard_box</uri>
+      <name>box_p1_a</name>
+      <pose>0 -53 1.2 0 0 0</pose>
+    </include>
+    <include>
+      <uri>model://cardboard_box</uri>
+      <name>box_p1_b</name>
+      <pose>0 -53 1.5 0 0 0.3</pose>
+    </include>
+    <include>
+      <uri>model://cardboard_box</uri>
+      <name>box_p2_a</name>
+      <pose>0 -57 1.2 0 0 0</pose>
+    </include>
+    <include>
+      <uri>model://cardboard_box</uri>
+      <name>box_p2_b</name>
+      <pose>0 -57 1.5 0 0 -0.2</pose>
+    </include>
+    <include>
+      <uri>model://cardboard_box</uri>
+      <name>box_p3_a</name>
+      <pose>0 -61 1.2 0 0 0</pose>
+    </include>
+    <include>
+      <uri>model://cardboard_box</uri>
+      <name>box_p3_b</name>
+      <pose>0 -61 1.5 0 0 0.5</pose>
+    </include>
+
+    <!-- CAIXAS DE PAPELÃO — sobre pallets fileira 2 (x=+3) -->
+    <include>
+      <uri>model://cardboard_box</uri>
+      <name>box_p4_a</name>
+      <pose>3 -53 1.2 0 0 0</pose>
+    </include>
+    <include>
+      <uri>model://cardboard_box</uri>
+      <name>box_p4_b</name>
+      <pose>3 -53 1.5 0 0 -0.4</pose>
+    </include>
+    <include>
+      <uri>model://cardboard_box</uri>
+      <name>box_p5_a</name>
+      <pose>3 -57 1.2 0 0 0.1</pose>
+    </include>
+    <include>
+      <uri>model://cardboard_box</uri>
+      <name>box_p6_a</name>
+      <pose>3 -61 1.2 0 0 0</pose>
+    </include>
+    <include>
+      <uri>model://cardboard_box</uri>
+      <name>box_p6_b</name>
+      <pose>3 -61 1.5 0 0 0.6</pose>
+    </include>
+
+    <!-- CAIXAS DE PAPELÃO — sobre pallets fileira 3 (x=-3) -->
+    <include>
+      <uri>model://cardboard_box</uri>
+      <name>box_p7_a</name>
+      <pose>-3 -55 1.2 0 0 0</pose>
+    </include>
+    <include>
+      <uri>model://cardboard_box</uri>
+      <name>box_p7_b</name>
+      <pose>-3 -55 1.5 0 0 -0.3</pose>
+    </include>
+    <include>
+      <uri>model://cardboard_box</uri>
+      <name>box_p8_a</name>
+      <pose>-3 -59 1.2 0 0 0</pose>
+    </include>
+    <include>
+      <uri>model://cardboard_box</uri>
+      <name>box_p9_a</name>
+      <pose>-3 -63 1.2 0 0 0.2</pose>
+    </include>
+    <include>
+      <uri>model://cardboard_box</uri>
+      <name>box_p9_b</name>
+      <pose>-3 -63 1.5 0 0 -0.1</pose>
+    </include>
+
+    <!-- PILHA DE CAIXAS — canto fundo esquerdo -->
+    <model name="crate_stack_bl_1">
+      <static>true</static>
+      <pose>-6 -68 0.3 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.6 0.6 0.6</size></box></geometry></collision>
+        <visual name="vis">
+          <geometry><box><size>0.6 0.6 0.6</size></box></geometry>
+          <material><ambient>0.6 0.4 0.2 1</ambient><diffuse>0.6 0.4 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="crate_stack_bl_2">
+      <static>true</static>
+      <pose>-6 -68 0.9 0 0 0.2</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.6 0.6 0.6</size></box></geometry></collision>
+        <visual name="vis">
+          <geometry><box><size>0.6 0.6 0.6</size></box></geometry>
+          <material><ambient>0.5 0.35 0.15 1</ambient><diffuse>0.5 0.35 0.15 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="crate_stack_bl_3">
+      <static>true</static>
+      <pose>-5 -68 0.3 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.6 0.6 0.6</size></box></geometry></collision>
+        <visual name="vis">
+          <geometry><box><size>0.6 0.6 0.6</size></box></geometry>
+          <material><ambient>0.7 0.5 0.25 1</ambient><diffuse>0.7 0.5 0.25 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="crate_stack_bl_4">
+      <static>true</static>
+      <pose>-5 -68 0.9 0 0 -0.15</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.6 0.6 0.6</size></box></geometry></collision>
+        <visual name="vis">
+          <geometry><box><size>0.6 0.6 0.6</size></box></geometry>
+          <material><ambient>0.6 0.4 0.2 1</ambient><diffuse>0.6 0.4 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- PILHA DE CAIXAS — corredor central ao fundo -->
+    <model name="crate_center_1">
+      <static>true</static>
+      <pose>0 -66 0.3 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.7 0.7 0.6</size></box></geometry></collision>
+        <visual name="vis">
+          <geometry><box><size>0.7 0.7 0.6</size></box></geometry>
+          <material><ambient>0.3 0.5 0.7 1</ambient><diffuse>0.3 0.5 0.7 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="crate_center_2">
+      <static>true</static>
+      <pose>0 -66 0.9 0 0 0.3</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.7 0.7 0.6</size></box></geometry></collision>
+        <visual name="vis">
+          <geometry><box><size>0.7 0.7 0.6</size></box></geometry>
+          <material><ambient>0.25 0.45 0.65 1</ambient><diffuse>0.25 0.45 0.65 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="crate_center_3">
+      <static>true</static>
+      <pose>1 -66 0.3 0 0 0.1</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.7 0.7 0.6</size></box></geometry></collision>
+        <visual name="vis">
+          <geometry><box><size>0.7 0.7 0.6</size></box></geometry>
+          <material><ambient>0.3 0.5 0.7 1</ambient><diffuse>0.3 0.5 0.7 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- MESAS -->
+    <include>
+      <uri>model://table</uri>
+      <name>table_back</name>
+      <pose>4 -67 0 0 0 0</pose>
+    </include>
+    <include>
+      <uri>model://table</uri>
+      <name>table_back_left</name>
+      <pose>-4 -67 0 0 0 0</pose>
+    </include>
+    <include>
+      <uri>model://table</uri>
+      <name>table_center</name>
+      <pose>0 -64 0 0 0 1.5707963</pose>
+    </include>
+
+    <!-- CAIXAS DE PAPELÃO — sobre as mesas -->
+    <include>
+      <uri>model://cardboard_box</uri>
+      <name>box_table_back_a</name>
+      <pose>4.3 -67 1.05 0 0 0.1</pose>
+    </include>
+    <include>
+      <uri>model://cardboard_box</uri>
+      <name>box_table_back_b</name>
+      <pose>3.7 -67.3 1.05 0 0 -0.2</pose>
+    </include>
+    <include>
+      <uri>model://cardboard_box</uri>
+      <name>box_table_left_a</name>
+      <pose>-3.8 -67 1.05 0 0 0.3</pose>
+    </include>
+
+    <!-- CAIXAS descartadas no chão -->
+    <include>
+      <uri>model://cardboard_box</uri>
+      <name>box_floor_1</name>
+      <pose>-6 -63 0.15 0 0 0.8</pose>
+    </include>
+    <include>
+      <uri>model://cardboard_box</uri>
+      <name>box_floor_2</name>
+      <pose>6 -63 0.15 0 0 -0.5</pose>
+    </include>
+    <include>
+      <uri>model://cardboard_box</uri>
+      <name>box_floor_3</name>
+      <pose>-6 -65 0.15 0 0 0.2</pose>
+    </include>
+
+    <!-- ============================================================
+         NELORE DRONE
+    ============================================================ -->
     <include>
       <uri>model://nelore</uri>
       <name>nelore</name>
