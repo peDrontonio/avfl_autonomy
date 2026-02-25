@@ -18,7 +18,7 @@ def generate_launch_description():
     pkg_drone_description = get_package_share_directory('drone_description')
     pkg_ros_gz_sim = get_package_share_directory('ros_gz_sim')
     pkg_ardupilot_gazebo = get_package_share_directory('ardupilot_gazebo')
-    
+
     # Path to the world file
     world_file = os.path.join(pkg_drone_gazebo, 'worlds', 'simple_world.sdf')
     

@@ -117,8 +117,9 @@
   direction: GZ_TO_ROS
 
 # D455 IMU (BMI055 6-axis: accel + gyro)
+# Sensor is now in d455_imu_frame (moved from d455_imu_optical_frame for correct orientation)
 - ros_topic_name: "d455/imu"
-  gz_topic_name: "/world/map/model/nelore/link/d455_imu_optical_frame/sensor/d455_imu/imu"
+  gz_topic_name: "/world/map/model/nelore/link/d455_imu_frame/sensor/d455_imu/imu"
   ros_type_name: "sensor_msgs/msg/Imu"
   gz_type_name: "gz.msgs.IMU"
   direction: GZ_TO_ROS

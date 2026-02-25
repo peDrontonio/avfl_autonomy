@@ -38,18 +38,25 @@ echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}"
 echo "Mounting workspace: ${WORKSPACE_DIR}"
 echo "=========================================="
 
+MIDDLEWARE_PROFILE="$(dirname ${SCRIPT_DIR})/../isaac_ros_common/docker/middleware_profiles/rtps_udp_large_msg_profile.xml"
+
 docker run -it --rm \
     --name ${CONTAINER_NAME} \
     --net=host \
+    --ipc=host \
     --privileged \
     -e DISPLAY=${DISPLAY} \
     -e QT_X11_NO_MITSHM=1 \
     -e LIBGL_ALWAYS_SOFTWARE=0 \
+    -e RMW_IMPLEMENTATION=rmw_fastrtps_cpp \
+    -e RMW_FASTRTPS_USE_QOS_FROM_XML=1 \
+    -e FASTRTPS_DEFAULT_PROFILES_FILE=/middleware/rtps_udp_large_msg_profile.xml \
     -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
     -v /dev/dri:/dev/dri \
     -v /dev/input:/dev/input \
     -v "${WORKSPACE_DIR}:/root/internship_ws/src/avfl_autonomy:rw" \
     -v "${HOME}/.gazebo:/root/.gazebo:rw" \
+    -v "$(realpath ${MIDDLEWARE_PROFILE}):/middleware/rtps_udp_large_msg_profile.xml:ro" \
     ${IMAGE_NAME}:${IMAGE_TAG} \
     "$@"
 

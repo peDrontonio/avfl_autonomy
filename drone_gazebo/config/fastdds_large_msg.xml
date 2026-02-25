@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<!--
+FastDDS profile with increased buffer sizes to handle large ROS messages
+such as robot_description (from robot_state_publisher), camera images, and
+depth data passed through the ros_gz_bridge parameter_bridge.
+
+Without this profile the default FastCDR buffer (~64 KB) is too small and
+nodes crash with NotEnoughMemoryException.
+-->
+
+<profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+    <transport_descriptors>
+        <transport_descriptor>
+            <transport_id>UdpLargeTransport</transport_id>
+            <type>UDPv4</type>
+            <sendBufferSize>16777216</sendBufferSize>    <!-- 16 MB -->
+            <receiveBufferSize>16777216</receiveBufferSize> <!-- 16 MB -->
+        </transport_descriptor>
+    </transport_descriptors>
+
+    <participant profile_name="large_msg_participant" is_default_profile="true">
+        <rtps>
+            <userTransports>
+                <transport_id>UdpLargeTransport</transport_id>
+            </userTransports>
+            <useBuiltinTransports>false</useBuiltinTransports>
+            <sendSocketBufferSize>16777216</sendSocketBufferSize>
+            <listenSocketBufferSize>16777216</listenSocketBufferSize>
+        </rtps>
+    </participant>
+
+    <!-- Dynamic memory allocation fixes FastCDR NotEnoughMemoryException for
+         large messages such as the robot_description SDF string. -->
+    <publisher profile_name="default_publisher" is_default_profile="true">
+        <historyMemoryPolicy>DYNAMIC</historyMemoryPolicy>
+    </publisher>
+
+    <subscriber profile_name="default_subscriber" is_default_profile="true">
+        <historyMemoryPolicy>DYNAMIC</historyMemoryPolicy>
+    </subscriber>
+</profiles>
