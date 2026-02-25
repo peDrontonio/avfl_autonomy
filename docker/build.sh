@@ -9,6 +9,7 @@ echo "Building Docker image: ${IMAGE_NAME}:${IMAGE_TAG}"
 echo "=========================================="
 
 docker build \
+    --network host \
     -t ${IMAGE_NAME}:${IMAGE_TAG} \
     -t ${IMAGE_NAME}:latest \
     -f "${SCRIPT_DIR}/dockerfile" \
