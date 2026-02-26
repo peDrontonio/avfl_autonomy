@@ -1,0 +1,13 @@
+
+__pycache__/
+*.pyc
+
+
+build/
+devel/
+logs/
+.catkin_workspace
+
+
+.vscode/
+env/
