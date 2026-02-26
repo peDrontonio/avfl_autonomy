@@ -98,7 +98,7 @@ class ArucoDetectorNode(Node):
         
         # Declare parameters
         self.declare_parameter('marker_size', DEFAULT_MARKER_SIZE)
-        self.declare_parameter('camera_topic', '/camera/image')
+        self.declare_parameter('camera_topic', '/camera_frente')
         self.declare_parameter('centering_threshold_x', CENTERING_THRESHOLD_X)
         self.declare_parameter('centering_threshold_y', CENTERING_THRESHOLD_Y)
         self.declare_parameter('debug_visualization', True)
@@ -111,7 +111,7 @@ class ArucoDetectorNode(Node):
         
         # ArUco detector setup
         self.bridge = CvBridge()
-        self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
+        self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_250)
         self.aruco_params = cv2.aruco.DetectorParameters()
         self.detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
         self.obj_points = get_marker_corners(self.marker_size)

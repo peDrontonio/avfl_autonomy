@@ -31,12 +31,13 @@ def generate_launch_description():
 
     # ArUco Detector Node
     aruco_detector = Node(
-        package='drone_gazebo',
-        executable='aruco_detector',
+        package='drone_navigate',
+        executable='aruco_node',
         name='aruco_detector',
         output='screen',
         parameters=[{
-            'use_sim_time': True
+            'use_sim_time': True,
+            'camera_topic': '/camera_frente',
         }]
     )
 

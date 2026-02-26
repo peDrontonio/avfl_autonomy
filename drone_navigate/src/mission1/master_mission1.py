@@ -20,7 +20,12 @@ FSM States:
 """
 import math
 import os
+import sys
 import time
+
+# When installed as a ROS 2 executable, sibling modules (tools_mission1, states, FSM)
+# live in the mission1/ subdirectory next to this file's parent directory.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mission1'))
 
 import numpy as np
 import rclpy
@@ -56,7 +61,7 @@ class MasterMission1(Tools):
         self.advance_speed = 0.3      # m/s for advancing
         self.approach_target = 3.0    # stop approaching at this distance (m)
         self.high_tolerance = 0.20    # loose centering (m)
-        self.low_tolerance = 0.08     # tight centering (m)
+        self.low_tolerance = 0.12    # tight centering (m)
 
         self.declare_parameter('takeoff_alt', 10.0)
         self.takeoff_alt = self.get_parameter('takeoff_alt').get_parameter_value().double_value

@@ -27,6 +27,13 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   DEPENDENCIES geometry_msgs ardupilot_msgs std_msgs
 )
 
+
+install(PROGRAMS
+  src/mission1/aruco_detector.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME aruco_node
+)
+
 install(PROGRAMS
   drone_navigate/telemetry_node.py
   DESTINATION lib/${PROJECT_NAME}
@@ -50,6 +57,47 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
   RENAME set_yaw_rate_service
 )
+
+# Install Python source modules (mission1 package)
+install(DIRECTORY
+  src/mission1
+  DESTINATION lib/${PROJECT_NAME}
+  FILES_MATCHING 
+  PATTERN "*.py"
+  PATTERN "__pycache__" EXCLUDE
+)
+
+# Install mission1 master node
+install(PROGRAMS
+  src/mission1/master_mission1.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME master_mission1
+)
+
+# Install mission2 master node
+install(PROGRAMS
+  src/mission2/master_mission2.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME master_mission2
+)
+
+# Install mission2 yolo detector node
+install(PROGRAMS
+  src/mission2/yolo_base_detector.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME yolo_base_detector
+)
+
+# Install Python source modules (mission2 package)
+install(DIRECTORY
+  src/mission2
+  DESTINATION lib/${PROJECT_NAME}
+  FILES_MATCHING 
+  PATTERN "*.py"
+  PATTERN "*.pt"
+  PATTERN "__pycache__" EXCLUDE
+)
+
 
 # Install launch files
 install(DIRECTORY

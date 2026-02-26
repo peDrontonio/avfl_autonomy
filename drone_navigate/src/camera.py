@@ -74,10 +74,10 @@ class CameraNode(Node):
                 return response
 
         elif cam_id == 2:
-            self.get_logger().info("Initializing Camera 2 (bottom)")
-            self.pub = self.create_publisher(Image, '/camera_baixo', 3)
+            self.get_logger().info("Initializing Camera frente)")
+            self.pub = self.create_publisher(Image, '/camera_frente', 3)
 
-            self.cap = cv2.VideoCapture(2)
+            self.cap = cv2.VideoCapture(-1)
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
