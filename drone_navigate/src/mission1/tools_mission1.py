@@ -46,10 +46,11 @@ class Tools(Node):
         self.detection_timeout = 0.5  # seconds
         
         # Centering parameters
-        self.centering_speed = 0.15  # m/s for centering movements
-        self.centering_gain_x = 0.5  # Proportional gain for X correction
-        self.centering_gain_y = 0.5  # Proportional gain for Y correction
+        self.centering_speed = 0.20  # m/s for centering movements
+        self.centering_gain_x = 1.0  # Proportional gain for X correction
+        self.centering_gain_y = 1.0  # Proportional gain for Y correction
         self.centering_threshold = 0.08  # meters - considered centered if error < this
+        self.centering_y_offset = 0.30  # meters - positive = aim above gate center
 
         # Optional: Try to activate camera service if available
         self.activate_camera = self.create_client(SetBool, '/start_camera')
@@ -204,7 +205,7 @@ class Tools(Node):
         start_time = time.time()
         
         # CORREÇÃO: Definir tolerâncias locais para garantir consistência
-        min_correction_move = 0.05 # Mínimo movimento para enviar comando (deadband)
+        min_correction_move = 0.07 # Mínimo movimento para enviar comando (deadband)
         
         while rclpy.ok() and (time.time() - start_time) < timeout:
             # Check detection freshness
@@ -256,7 +257,7 @@ class Tools(Node):
                     z=correction_z,
                     speed=self.centering_speed, 
                     frame_id='body', 
-                    tolerance=0.05,
+                    tolerance=0.10,
                     auto_arm=False
                 )
             else:
@@ -266,7 +267,7 @@ class Tools(Node):
                 self.get_logger().info("Correction too small, assuming centered.")
                 return True
             
-            time.sleep(0.2)
+            time.sleep(0.1)
         
         self.get_logger().warn("Centering timeout")
         # Opcional: Retornar True se estiver "quase" lá no timeout
@@ -306,21 +307,21 @@ class Tools(Node):
             correction_y = max(-max_correction, min(max_correction, correction_y))
             
             # Deadband para evitar oscilação
-            if abs(correction_y) > 0.05: 
+            if abs(correction_y) > 0.07: 
                 self.navigateWait(
                     x=0, 
                     y=correction_y, 
                     z=0,
                     speed=self.centering_speed, 
                     frame_id='body', 
-                    tolerance=0.05,
+                    tolerance=0.10,
                     auto_arm=False
                 )
             else:
                  # Correção muito pequena, considera centralizado
                  return True
             
-            time.sleep(0.2)
+            time.sleep(0.1)
         
         self.get_logger().warn("Partial centering timeout")
         return False
