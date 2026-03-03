@@ -4,7 +4,7 @@ import os
 import sys
 import time
 
-# Add mission2 package to path when running as installed executable
+# add mission2 package to path when running as installed executable
 script_dir = os.path.dirname(os.path.abspath(__file__))
 mission2_dir = os.path.join(script_dir, 'mission2')
 if os.path.exists(mission2_dir) and mission2_dir not in sys.path:
@@ -34,14 +34,11 @@ class MasterMission2(Tools):
         self.setServer()
         
     def update(self):
-        """
-        Lógica da máquina de estados da Missão 2.
-        FSM: GoingToBase -> Search_Base -> Scan_for_Base -> Landing
-        """
+        # mission 2 state machine logic. fsm: goingtobase -> search_base -> scan_for_base -> landing
         if self.fsm == 'Takeoff':
             self.current_state = 'Takeoff'
             self.get_logger().info("=" * 60)
-            self.get_logger().info("ESTADO - Takeoff")
+            self.get_logger().info("STATE - Takeoff")
             self.get_logger().info("=" * 60)
             self.get_logger().info(f"Taking off to mission altitude: {self.takeoff_alt}m...")
             
@@ -57,11 +54,11 @@ class MasterMission2(Tools):
         if self.fsm == 'GoingToBase':
             self.current_state = 'GoingToBase'
             self.get_logger().info("=" * 60)
-            self.get_logger().info("ESTADO - GoingToBase")
+            self.get_logger().info("STATE - GoingToBase")
             self.get_logger().info("=" * 60)
             self.get_logger().info(f"Navigating to base area: Lat={self.base_lat}, Lon={self.base_lon}")
 
-            # Navigate to base GPS coordinates
+            # navigate to base gps coordinates
             result = self.navigateGlobalWait(
                 lat=self.base_lat,
                 lon=self.base_lon,
@@ -78,17 +75,17 @@ class MasterMission2(Tools):
                 self.get_logger().error("Failed to reach base area")
                 self.current_state = ''
             
-        # Search_Base State
+        # search_base state
         if self.fsm == 'Search_Base':
             self.current_state = 'Search_Base'
             self.search_attempts += 1
             self.get_logger().info("=" * 60)
-            self.get_logger().info(f"ESTADO - Search_Base (tentativa {self.search_attempts}/{self.max_search_attempts})")
+            self.get_logger().info(f"STATE - Search_Base (attempt {self.search_attempts}/{self.max_search_attempts})")
             self.get_logger().info("=" * 60)
             
-            # Safety: check if max attempts exceeded
+            # safety: check if max attempts exceeded
             if self.search_attempts > self.max_search_attempts:
-                self.get_logger().warn(f"Search_Base: {self.max_search_attempts} tentativas esgotadas! Acionando RTL...")
+                self.get_logger().warn(f"Search_Base: {self.max_search_attempts} attempts exhausted! Activating RTL...")
                 self.current_state = ''
                 self.fsm.add('rtl')
                 self.fsm.updateEvent()
@@ -96,7 +93,7 @@ class MasterMission2(Tools):
             
             self.get_logger().info("Searching for mobile base with camera...")
 
-            # Move to search altitude before starting lateral search
+            # move to search altitude before starting lateral search
             self.get_logger().info(f"Moving to search altitude: {self.search_alt}m...")
             telem_req = GetTelemetry.Request()
             telem_req.frame_id = 'map'
@@ -107,30 +104,34 @@ class MasterMission2(Tools):
                                   speed=2.0, frame_id='map', tolerance=0.1, auto_arm=False)
                 self.get_logger().info(f"Search altitude reached: {self.search_alt}m")
 
-            # Start search pattern - move laterally while looking for base
+            # start search pattern - move laterally while looking for base
             self.get_logger().info("Starting lateral search pattern...")
             resposta = self.navigateInterrupted(y=-0.5, speed=0.3, frame_id='body', 
-                                               tolerance=0.2, center_tolerance=40, auto_arm=False)
+                                               tolerance=0.2, center_tolerance=100, auto_arm=False)
             
             if resposta == "failed":
                 self.get_logger().warn("Base not found in initial search direction")
                 self.current_state = ''
-                self.fsm.add('base_lost') 
+                self.fsm.add('base_lost')
+                self.fsm.updateEvent()
+                return
             elif resposta == "success":
                 self.get_logger().info("Base detected and centered!")
                 self.current_state = ''
                 self.fsm.add('base_found')
+                self.fsm.updateEvent()
+                return
 
         if self.fsm == 'Scan_for_Base':
             self.current_state = 'Scan_for_Base'
             self.scan_attempts += 1
             self.get_logger().info("=" * 60)
-            self.get_logger().info(f"ESTADO - Scan_for_Base (tentativa {self.scan_attempts}/{self.max_search_attempts})")
+            self.get_logger().info(f"STATE - Scan_for_Base (attempt {self.scan_attempts}/{self.max_search_attempts})")
             self.get_logger().info("=" * 60)
             
-            # Safety: check if max attempts exceeded
+            # safety: check if max attempts exceeded
             if self.scan_attempts > self.max_search_attempts:
-                self.get_logger().warn(f"Scan_for_Base: {self.max_search_attempts} tentativas esgotadas! Acionando RTL...")
+                self.get_logger().warn(f"Scan_for_Base: {self.max_search_attempts} attempts exhausted! Activating RTL...")
                 self.current_state = ''
                 self.fsm.add('rtl')
                 self.fsm.updateEvent()
@@ -139,14 +140,14 @@ class MasterMission2(Tools):
             self.get_logger().info("Base lost, attempting to reacquire...")
             
             if self.last_base_coordinates is None:
-                self.get_logger().error("Base never detected. Cannot recover. Acionando Return Base...")
+                self.get_logger().error("Base never detected. Cannot recover. Activating Return Base...")
                 self.return_base()
                 self.current_state = ''
                 self.fsm.add('rtl')
                 self.fsm.updateEvent()
                 return
             
-            # Return to last known base position
+            # return to last known base position
             self.get_logger().info(f"Returning to last known position: x={self.last_base_coordinates.x:.2f}, y={self.last_base_coordinates.y:.2f}")
             
             telem_req = GetTelemetry.Request()
@@ -160,16 +161,17 @@ class MasterMission2(Tools):
             
             time.sleep(1)
             
-            # Wait for base detection and try to center
+            # wait for base detection and try to center
             while rclpy.ok():
                 if self.consecutive_detections > self.required_consecutive_detections:
                     if self.is_base_centered():
                         self.get_logger().info("Base reacquired and centered!")
                         self.current_state = ''
                         self.fsm.add('centered')
+                        self.fsm.updateEvent()
                         break
                     else:
-                        # Fine-tune position to center on base
+                        # fine-tune position to center on base
                         self.get_logger().info("Fine-tuning position to center on base...")
                         telem_req2 = GetTelemetry.Request()
                         telem_req2.frame_id = 'map'
@@ -184,6 +186,7 @@ class MasterMission2(Tools):
                             if resultado == "success":
                                 self.current_state = ''
                                 self.fsm.add('centered')
+                                self.fsm.updateEvent()
                                 break
 
                 time.sleep(0.1)
@@ -193,11 +196,11 @@ class MasterMission2(Tools):
             self.current_state = 'Descend_and_Centralize'
             low_alt = self.search_alt * 0.4
             self.get_logger().info("=" * 60)
-            self.get_logger().info(f"ESTADO - Descend_and_Centralize")
+            self.get_logger().info(f"STATE - Descend_and_Centralize")
             self.get_logger().info("=" * 60)
             self.get_logger().info(f"Descending to {low_alt:.1f}m for precision centralization...")
             
-            # Descend to low altitude
+            # descend to low altitude
             telem_req = GetTelemetry.Request()
             telem_req.frame_id = 'map'
             telem_future = self.get_telemetry.call_async(telem_req)
@@ -216,7 +219,7 @@ class MasterMission2(Tools):
             
             time.sleep(0.5)
             
-            # Centralize once at low altitude
+            # centralize once at low altitude
             self.get_logger().info("Centralizing on base at low altitude...")
             telem_req2 = GetTelemetry.Request()
             telem_req2.frame_id = 'map'
@@ -233,19 +236,25 @@ class MasterMission2(Tools):
                     self.get_logger().info("Base centered at low altitude! Ready for landing.")
                     self.current_state = ''
                     self.fsm.add('centered_low')
+                    self.fsm.updateEvent()
+                    return
                 else:
                     self.get_logger().warn("Failed to centralize at low altitude, going back to scan")
                     self.current_state = ''
                     self.fsm.add('base_lost')
+                    self.fsm.updateEvent()
+                    return
             else:
                 self.get_logger().error("Telemetry timeout during centralization")
                 self.current_state = ''
                 self.fsm.add('base_lost')
+                self.fsm.updateEvent()
+                return
 
         elif self.fsm == 'Landing':
             self.current_state = 'Landing'
             self.get_logger().info("=" * 60)
-            self.get_logger().info("ESTADO - Landing")
+            self.get_logger().info("STATE - Landing")
             self.get_logger().info("=" * 60)
             self.get_logger().info("Waiting for base alignment to execute landing...")
             
@@ -255,14 +264,16 @@ class MasterMission2(Tools):
                         self.get_logger().info("Base aligned! Executing landing sequence...")
                         self.land()
                         
-                        # Wait for landing to actually complete
+                        # wait for landing to actually complete
                         if self.wait_for_landing(timeout=300.0):
                             self.get_logger().info("★" * 30)
                             self.get_logger().info("Landing complete! Mission successful!")
                             self.get_logger().info("★" * 30)
                             self.current_state = ''
                             self.fsm.add('finished')
+                            self.fsm.updateEvent()
                             self.mission_running = False
+                            return
                         else:
                             self.get_logger().error("Landing timeout or failed")
                             self.mission_running = False
@@ -271,23 +282,25 @@ class MasterMission2(Tools):
             except Exception as e:
                 self.get_logger().error(f"Error during landing: {e}")
         
-        # ReturnBase State (Safety)
+        # returnbase state (safety)
         elif self.fsm == 'ReturnBase':
             self.current_state = 'ReturnBase'
             self.get_logger().warn("=" * 60)
-            self.get_logger().warn("ESTADO - ReturnBase (SAFETY)")
+            self.get_logger().warn("STATE - ReturnBase (SAFETY)")
             self.get_logger().warn("=" * 60)
-            self.get_logger().warn(f"Base não encontrada após múltiplas tentativas.")
+            self.get_logger().warn(f"Base not found after multiple attempts.")
             self.get_logger().warn(f"(Search: {self.search_attempts}, Scan: {self.scan_attempts})")
-            self.get_logger().warn("Acionando Return Base para segurança do drone!")
+            self.get_logger().warn("Activating Return Base for drone safety!")
             
             self.return_base()
             
             self.current_state = ''
             self.fsm.add('rtl_activated')
+            self.fsm.updateEvent()
             self.mission_running = False
+            return
             
-        # Atualiza o estado da FSM interna
+        # update internal fsm state
         if self.fsm != self.current_state:
             self.fsm.updateEvent()
 
