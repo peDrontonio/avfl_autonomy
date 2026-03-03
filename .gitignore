@@ -10,4 +10,4 @@ logs/
 
 
 .vscode/
-env/
+env/*.jpg
