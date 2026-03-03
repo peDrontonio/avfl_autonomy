@@ -3,7 +3,6 @@
 [![ROS 2 Humble](https://img.shields.io/badge/ROS%202-Humble-blue?logo=ros&logoColor=white)](https://docs.ros.org/en/humble/)
 [![Gazebo Harmonic](https://img.shields.io/badge/Gazebo-Harmonic-orange?logo=gazebo&logoColor=white)](https://gazebosim.org/)
 [![ArduPilot SITL](https://img.shields.io/badge/ArduPilot-SITL-green?logo=ardupilot&logoColor=white)](https://ardupilot.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Autonomous flight stack for drones built on top of ArduPilot and ROS 2. This repository contains mission packages for autonomous tasks such as ArUco gate detection and traversal, and landing on a helipad using YOLO-based detection.
 
