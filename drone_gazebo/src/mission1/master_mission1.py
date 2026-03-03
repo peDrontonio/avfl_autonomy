@@ -52,7 +52,7 @@ class MasterMission1(Tools):
         # Mission parameters
         self.search_distance = 6.0    # metres to search in each direction
         self.search_speed = 0.2       # m/s for lateral search
-        self.advance_distance = 5.0   # metres to fly through gate
+        self.advance_distance = 6.0   # metres to fly through gate
         self.advance_speed = 0.3      # m/s for advancing
         self.approach_target = 3.0    # stop approaching at this distance (m)
         self.high_tolerance = 0.20    # loose centering (m)
@@ -252,6 +252,15 @@ class MasterMission1(Tools):
                 time.sleep(0.5)
                 return
 
+            # ── Post-centering vertical offset ──
+            if self.centering_y_offset != 0.0:
+                print(cf.yellow(f"Applying vertical offset: {self.centering_y_offset:+.2f}m"))
+                self.navigateWait(
+                    x=0, y=0, z=self.centering_y_offset,
+                    speed=self.centering_speed, frame_id='body',
+                    tolerance=0.05, auto_arm=False
+                )
+
             print(cf.green("=" * 50))
             print(cf.green("CENTERED & CLOSE — ready to pass through gate!"))
             print(cf.green(f"  Error: X={self.gate_error.x:.3f}  Y={self.gate_error.y:.3f}"))
@@ -272,14 +281,6 @@ class MasterMission1(Tools):
                 advance_distance=self.advance_distance,
                 advance_speed=self.advance_speed
             )
-
-            if success:
-                print(cf.green("Gate crossed! Moving 1 m extra..."))
-                self.navigateWait(
-                    x=1.0, y=0, z=0,
-                    speed=0.3, frame_id='body',
-                    tolerance=0.2, auto_arm=False
-                )
 
             print(cf.green("Ready to land!"))
             self.fsm.add('crossed')

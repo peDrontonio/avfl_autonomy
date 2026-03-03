@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
-"""
-Mission 2 Launch File - Mobile Base Landing
 
-This launch file starts the mission-specific nodes:
-1. YOLO base detector node
-2. Master mission2 controller node
-
-Note: Launch Gazebo and drone navigation services separately:
-    ros2 launch drone_gazebo simple_world.launch.py
-    ros2 launch drone_navigate drone_services.launch.py
-
-Usage:
-    ros2 launch drone_gazebo mission2.launch.py
-    ros2 launch drone_gazebo mission2.launch.py base_lat:=-35.363257 base_lon:=149.165400 takeoff_alt:=10.0 search_alt:=8.0
-"""
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
@@ -22,7 +8,7 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    """Generate launch description for Mission 2."""
+    # generate launch description for mission 2
 
     base_lat_arg = DeclareLaunchArgument(
         'base_lat',
@@ -48,7 +34,7 @@ def generate_launch_description():
         description='Search altitude in meters for the search pattern'
     )
 
-    # YOLO Base Detector Node
+    # yolo base detector node
     yolo_detector = Node(
         package='drone_gazebo',
         executable='yolo_base_detector',
@@ -59,7 +45,7 @@ def generate_launch_description():
         }]
     )
 
-    # Master Mission2 Controller Node
+    # master mission2 controller node
     master_mission2 = Node(
         package='drone_gazebo',
         executable='master_mission2',

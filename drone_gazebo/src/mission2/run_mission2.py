@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""
-Mission 2 Launch Script
-Starts both the YOLO detector and mission controller
-"""
+
 import subprocess
 import sys
 import os
@@ -17,13 +14,13 @@ def main():
     print("  ros2 run ... --ros-args -p base_lat:=<LAT> -p base_lon:=<LON> -p base_alt:=<ALT>")
     print("\n" + "=" * 60)
     
-    # Get the directory where this script is located
+    # get the directory where this script is located
     script_dir = os.path.dirname(os.path.abspath(__file__))
     
-    # Start YOLO detector in background
+    # start yolo detector in background
     yolo_cmd = ["python3", os.path.join(script_dir, "yolo_base_detector.py")]
     
-    # Start mission controller
+    # start mission controller
     mission_cmd = ["python3", os.path.join(script_dir, "master_mission2.py")]
     
     try:
@@ -38,7 +35,7 @@ def main():
         print("  ros2 service call /start_mission2 std_srvs/srv/Trigger")
         print("\nPress Ctrl+C to stop all nodes...")
         
-        # Wait for processes
+        # wait for processes
         yolo_process.wait()
         mission_process.wait()
         

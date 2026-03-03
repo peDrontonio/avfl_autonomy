@@ -352,24 +352,25 @@
       <pose>15 0 0.005 0 0 0</pose>
     </include>
 
-    <!-- ================================================================ -->
-    <!--  HANGAR  (centro: x=0, y=-60, roll=-90°)                        -->
-    <!-- ================================================================ -->
+    <!--
+    <!- ================================================================ ->
+    <!-  HANGAR  (centro: x=0, y=-60, roll=-90°)                        ->
+    <!- ================================================================ ->
     <include>
       <uri>model://hangar</uri>
       <name>hangar</name>
       <pose>0 -60 7 -1.5707963 0 0</pose>
     </include>
 
-    <!-- ============================================================
+    <!- ============================================================
          LAYOUT INTERIOR DO HANGAR
          Dimensões reais (DAE c/ scale 0.55): 44m × 22m
          Entrada: y ≈ -49  |  Fundo: y ≈ -71
          Parede esquerda: x ≈ -22  |  Parede direita: x ≈ +22
          Piso: z = 0  |  Altura no pico: ~17m
-    ============================================================ -->
+    ============================================================ ->
 
-    <!-- PRATELEIRAS — parede esquerda -->
+    <!- PRATELEIRAS — parede esquerda ->
     <include>
       <uri>model://shelves</uri>
       <name>shelf_left_1</name>
@@ -396,7 +397,7 @@
       <pose>-20.7 -58 0 0 0 1.5707963</pose>
     </include>
 
-    <!-- PRATELEIRAS — parede direita -->
+    <!- PRATELEIRAS — parede direita ->
     <include>
       <uri>model://shelves</uri>
       <name>shelf_right_1</name>
@@ -423,7 +424,7 @@
       <pose>18.7 -70 0 0 0 3.141592</pose>
     </include>
 
-    <!-- PALLETS COM CAIXAS — fileira central -->
+    <!- PALLETS COM CAIXAS — fileira central ->
     <include>
       <uri>model://pallet_box_mobile</uri>
       <name>pallet_1</name>
@@ -440,7 +441,7 @@
       <pose>0 -61 0 0 0 0</pose>
     </include>
 
-    <!-- PALLETS — segunda fileira (x=+3) -->
+    <!- PALLETS — segunda fileira (x=+3) ->
     <include>
       <uri>model://pallet_box_mobile</uri>
       <name>pallet_4</name>
@@ -457,7 +458,7 @@
       <pose>3 -61 0 0 0 0</pose>
     </include>
 
-    <!-- PALLETS — terceira fileira (x=-3) -->
+    <!- PALLETS — terceira fileira (x=-3) ->
     <include>
       <uri>model://pallet_box_mobile</uri>
       <name>pallet_7</name>
@@ -474,7 +475,7 @@
       <pose>-3 -63 0 0 0 0</pose>
     </include>
 
-    <!-- BARRIS — triângulo perto da entrada, lado esquerdo -->
+    <!- BARRIS — triângulo perto da entrada, lado esquerdo ->
     <include>
       <uri>model://construction_barrel</uri>
       <name>barrel_1</name>
@@ -491,7 +492,7 @@
       <pose>-2.25 -51.3 0 0 0 1.4</pose>
     </include>
 
-    <!-- BARRIS — grupo lado direito perto da entrada -->
+    <!- BARRIS — grupo lado direito perto da entrada ->
     <include>
       <uri>model://construction_barrel</uri>
       <name>barrel_4</name>
@@ -513,7 +514,7 @@
       <pose>3.75 -51.5 0 0 0 0.2</pose>
     </include>
 
-    <!-- BARRIS — fileira ao fundo direito -->
+    <!- BARRIS — fileira ao fundo direito ->
     <include>
       <uri>model://construction_barrel</uri>
       <name>barrel_8</name>
@@ -525,7 +526,7 @@
       <pose>7 -68 0 0 0 0.9</pose>
     </include>
 
-    <!-- CAIXAS DE PAPELÃO — sobre pallets fileira 1 (x=0) -->
+    <!- CAIXAS DE PAPELÃO — sobre pallets fileira 1 (x=0) ->
     <include>
       <uri>model://cardboard_box</uri>
       <name>box_p1_a</name>
@@ -557,7 +558,7 @@
       <pose>0 -61 1.5 0 0 0.5</pose>
     </include>
 
-    <!-- CAIXAS DE PAPELÃO — sobre pallets fileira 2 (x=+3) -->
+    <!- CAIXAS DE PAPELÃO — sobre pallets fileira 2 (x=+3) ->
     <include>
       <uri>model://cardboard_box</uri>
       <name>box_p4_a</name>
@@ -584,7 +585,7 @@
       <pose>3 -61 1.5 0 0 0.6</pose>
     </include>
 
-    <!-- CAIXAS DE PAPELÃO — sobre pallets fileira 3 (x=-3) -->
+    <!- CAIXAS DE PAPELÃO — sobre pallets fileira 3 (x=-3) ->
     <include>
       <uri>model://cardboard_box</uri>
       <name>box_p7_a</name>
@@ -611,7 +612,7 @@
       <pose>-3 -63 1.5 0 0 -0.1</pose>
     </include>
 
-    <!-- PILHA DE CAIXAS — canto fundo esquerdo (x=-6, y=-68) -->
+    <!- PILHA DE CAIXAS — canto fundo esquerdo (x=-6, y=-68) ->
     <model name="crate_stack_bl_1">
       <static>true</static>
       <pose>-6 -68 0.3 0 0 0</pose>
@@ -657,7 +658,7 @@
       </link>
     </model>
 
-    <!-- PILHA DE CAIXAS — corredor central ao fundo (x=0, y=-66) -->
+    <!- PILHA DE CAIXAS — corredor central ao fundo (x=0, y=-66) ->
     <model name="crate_center_1">
       <static>true</static>
       <pose>0 -66 0.3 0 0 0</pose>
@@ -692,7 +693,7 @@
       </link>
     </model>
 
-    <!-- MESAS — área de trabalho -->
+    <!- MESAS — área de trabalho ->
     <include>
       <uri>model://table</uri>
       <name>table_back</name>
@@ -709,7 +710,7 @@
       <pose>0 -64 0 0 0 1.5707963</pose>
     </include>
 
-    <!-- CAIXAS DE PAPELÃO — sobre as mesas -->
+    <!- CAIXAS DE PAPELÃO — sobre as mesas ->
     <include>
       <uri>model://cardboard_box</uri>
       <name>box_table_back_a</name>
@@ -726,7 +727,7 @@
       <pose>-3.8 -67 1.05 0 0 0.3</pose>
     </include>
 
-    <!-- CAIXAS descartadas no chão perto das prateleiras -->
+    <!- CAIXAS descartadas no chão perto das prateleiras ->
     <include>
       <uri>model://cardboard_box</uri>
       <name>box_floor_1</name>
@@ -743,6 +744,7 @@
       <pose>-6 -65 0.15 0 0 0.2</pose>
     </include>
 
+    -->
     <!-- ============================================================
          NELORE DRONE
     ============================================================ -->
