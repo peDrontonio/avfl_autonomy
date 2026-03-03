@@ -18,10 +18,10 @@ class YOLOBaseDetector(Node):
         script_dir = os.path.dirname(os.path.abspath(__file__))
         
         # try installed location first
-        model_path = os.path.join(script_dir, 'mission2/yolo/modelo_fumaca.pt')
+        model_path = os.path.join(script_dir, 'mission2/yolo/best.pt')
         if not os.path.exists(model_path):
             # try local source location
-            model_path = os.path.join(script_dir, 'yolo/modelo_fumaca.pt')
+            model_path = os.path.join(script_dir, 'yolo/best.pt')
         
         if not os.path.exists(model_path):
             self.get_logger().error(f"YOLO model not found at {model_path}")

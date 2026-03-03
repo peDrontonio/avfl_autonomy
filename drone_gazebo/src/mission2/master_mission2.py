@@ -230,7 +230,7 @@ class MasterMission2(Tools):
                 distancia_y = -(self.x_center - self.image_width//2)/self.fx * telem_atual.z
                 distancia_x = -(self.y_center - self.image_height//2)/self.fy * telem_atual.z
                 resultado = self.navigateCentralize(x=distancia_x, y=distancia_y,
-                                                   speed=0.1, frame_id='body',
+                                                   speed=0.15, frame_id='body',
                                                    center_tolerance=15)
                 if resultado == "success":
                     self.get_logger().info("Base centered at low altitude! Ready for landing.")
