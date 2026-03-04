@@ -38,7 +38,7 @@ The project is organized into three main ROS 2 packages:
 
 Communication between the Gazebo simulation and ROS 2 is handled by the `ros_gz_bridge`, which translates Gazebo transport topics (camera images, IMU, GPS, etc.) into standard ROS 2 messages. The ArduPilot SITL communicates with ROS 2 through the `ardupilot_ros` DDS interface.
 
-https://github.com/user-attachments/assets/53ca8d9d-0909-4c46-b84d-a931ea78b193
+https://github.com/user-attachments/assets/32b5d3d2-b5cc-4b9b-9e0c-d8b86e58a120
 
 <!-- TODO: Add a screenshot or GIF of the simulation here -->
 <!-- ![Simulation Demo](docs/demo.gif) -->
