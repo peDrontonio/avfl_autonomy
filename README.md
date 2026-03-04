@@ -1,12 +1,42 @@
 # AVFL Autonomy
 
 [![ROS 2 Humble](https://img.shields.io/badge/ROS%202-Humble-blue?logo=ros&logoColor=white)](https://docs.ros.org/en/humble/)
-[![Gazebo Harmonic](https://img.shields.io/badge/Gazebo-Harmonic-orange?logo=gazebo&logoColor=white)](https://gazebosim.org/)
 [![ArduPilot SITL](https://img.shields.io/badge/ArduPilot-SITL-green?logo=ardupilot&logoColor=white)](https://ardupilot.org/)
+[![Docker](https://img.shields.io/badge/Docker-Container-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![YOLOv11](https://img.shields.io/badge/YOLOv11-Ultralytics-00FFFF?logo=yolo&logoColor=white)](https://docs.ultralytics.com/)
 
-Autonomous flight stack for drones built on top of ArduPilot and ROS 2. This repository contains mission packages for autonomous tasks such as ArUco gate detection and traversal, and landing on a helipad using YOLO-based detection.
+## Overview
 
-All development and simulation is done inside a Docker container to ensure a consistent, reproducible environment across machines, avoiding dependency conflicts and simplifying setup.
+**AVFL Autonomy** is an autonomous flight stack for UAVs (Unmanned Aerial Vehicles) developed as part of a research internship project. The system integrates [ArduPilot](https://ardupilot.org/) as the flight controller with [ROS 2 Humble](https://docs.ros.org/en/humble/) as the robotics middleware, enabling the development and simulation of fully autonomous drone missions in a realistic 3D environment powered by [Gazebo Harmonic](https://gazebosim.org/).
+
+### Key Features
+
+- **Autonomous Mission Execution** — Missions are structured as Finite State Machines (FSMs), enabling modular, readable, and extensible behavior logic with clearly defined state transitions.
+- **Computer Vision Pipeline** — Integrates OpenCV for ArUco marker detection (Mission 1) and YOLOv11 for real-time object detection via a bottom-facing camera (Mission 2).
+- **Navigation Services** — A custom navigation layer provides position-based control, GPS waypoint navigation, yaw control, and telemetry services, abstracting ArduPilot's low-level interface into high-level ROS 2 services.
+- **Software-In-The-Loop (SITL)** — ArduPilot's SITL simulator runs alongside Gazebo, providing a high-fidelity simulation of the flight controller firmware without the need for physical hardware.
+- **Dockerized Environment** — The entire development and simulation stack (ROS 2, Gazebo, ArduPilot SITL, bridges, and dependencies) runs inside a Docker container, ensuring reproducibility and eliminating dependency conflicts across machines.
+
+### Missions
+
+| Mission | Description | Vision |
+|---|---|---|
+| **Mission 1 — ArUco Gate Passing** | The drone takes off, searches for a gate composed of 4 ArUco markers, aligns and centers itself relative to the gate, flies through it, and lands. | OpenCV ArUco detection + pose estimation |
+| **Mission 2 — Helipad Landing** | The drone takes off, navigates via GPS to a target area, searches for the helipad using a downward-facing camera, descends while centralizing, and performs a precision landing. | YOLOv11 real-time object detection |
+
+The architecture is designed to be extensible: beyond the missions already integrated, new autonomous missions can be easily developed and simulated in the same Gazebo environment by creating additional FSM nodes and reusing the existing navigation services.
+
+### Architecture
+
+The project is organized into three main ROS 2 packages:
+
+| Package | Role |
+|---|---|
+| `drone_description` | URDF models and mesh descriptions for the drone platform. |
+| `drone_gazebo` | Simulation package containing Gazebo world files, bridge configurations, launch files for each mission, and the mission FSM nodes. |
+| `drone_navigate` | Core navigation and control package providing reusable ROS 2 services (`navigate`, `get_telemetry`, `set_yaw_rate`, `navigate_global`), custom messages/services, and the computer vision nodes (ArUco detector, YOLO detector). |
+
+Communication between the Gazebo simulation and ROS 2 is handled by the `ros_gz_bridge`, which translates Gazebo transport topics (camera images, IMU, GPS, etc.) into standard ROS 2 messages. The ArduPilot SITL communicates with ROS 2 through the `ardupilot_ros` DDS interface.
 
 https://github.com/user-attachments/assets/53ca8d9d-0909-4c46-b84d-a931ea78b193
 
@@ -20,7 +50,7 @@ https://github.com/user-attachments/assets/53ca8d9d-0909-4c46-b84d-a931ea78b193
 - [Setup](#setup)
 - [Launching the World](#launching-the-world)
 - [Mission 1 — ArUco Gate Passing](#mission-1--aruco-gate-passing)
-- [Mission 2 — Mobile Base Landing](#mission-2--mobile-base-landing)
+- [Mission 2 — Helipad Landing](#mission-2--helipad-landing)
 - [Useful Reference](#useful-reference)
 - [Project Structure](#project-structure)
 
@@ -113,11 +143,11 @@ Example: `ros2 launch drone_gazebo mission1.launch.py takeoff_alt:=15.0`
 
 ## Mission 2 — Helipad Landing
 
-The drone takes off, navigates via GPS to the base area, searches for the mobile base using the bottom camera (YOLO), and lands on it.
+The drone takes off, navigates via GPS to the helipad area, searches for the helipad using the bottom camera (YOLO), and lands on it.
 
 **FSM:** `Takeoff → GoingToBase → Search_Base → Scan_for_Base → Descend_and_Centralize → Landing`
 
-If the base is lost during descent, the FSM returns to `Scan_for_Base`. A safety `ReturnBase` (RTL) state is triggered after max retries.
+If the helipad is lost during descent, the FSM returns to `Scan_for_Base`. A safety `ReturnBase` (RTL) state is triggered after max retries.
 
 Open **4 terminals** inside the Docker container (use `./run.sh exec` for each new terminal):
 
