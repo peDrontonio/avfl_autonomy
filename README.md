@@ -121,6 +121,15 @@ Gate layout (ArUco IDs 0–3):
   |     |
   0 --- 1
 ```
+> **Important:** Before running the commands below, make sure that you are on the ~/internship_ws directory and the environment was built and sourced.
+
+```
+cd ~/internship_ws
+
+colcon build --symlink-install
+
+source install/setup.bash
+```
 
 Open **4 terminals** inside the Docker container (use `./run.sh exec` for each new terminal):
 
@@ -148,6 +157,16 @@ The drone takes off, navigates via GPS to the helipad area, searches for the hel
 **FSM:** `Takeoff → GoingToBase → Search_Base → Scan_for_Base → Descend_and_Centralize → Landing`
 
 If the helipad is lost during descent, the FSM returns to `Scan_for_Base`. A safety `ReturnBase` (RTL) state is triggered after max retries.
+
+> **Important:** Before running the commands below, make sure that you are on the ~/internship_ws directory and the environment was built and sourced.
+
+```
+cd ~/internship_ws
+
+colcon build --symlink-install
+
+source install/setup.bash
+```
 
 Open **4 terminals** inside the Docker container (use `./run.sh exec` for each new terminal):
 
