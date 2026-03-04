@@ -6,6 +6,8 @@
 
 Autonomous flight stack for drones built on top of ArduPilot and ROS 2. This repository contains mission packages for autonomous tasks such as ArUco gate detection and traversal, and landing on a helipad using YOLO-based detection.
 
+https://github.com/user-attachments/assets/53ca8d9d-0909-4c46-b84d-a931ea78b193
+
 All development and simulation is done inside a Docker container to ensure a consistent, reproducible environment across machines, avoiding dependency conflicts and simplifying setup.
 
 <!-- TODO: Add a screenshot or GIF of the simulation here -->
