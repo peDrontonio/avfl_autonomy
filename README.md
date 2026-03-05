@@ -32,9 +32,14 @@ This branch contains one main ROS 2 package:
 
 | Package | Role |
 |---|---|
-| `drone_navigate` | Core navigation and control package providing reusable ROS 2 services (`navigate`, `get_telemetry`, `set_yaw_rate`, `navigate_global`), custom messages/services, mission FSM nodes, and the computer vision nodes (ArUco detector, YOLO detector). |
+| `drone_navigate` | Core navigation and control package providing reusable ROS 2 services (`/avfl/navigate`, `/avfl/get_telemetry`, `/avfl/set_yaw_rate`, `/avfl/navigate_global`), custom messages/services, mission FSM nodes, and the computer vision nodes (ArUco detector, YOLO detector). |
 
 Communication between ArduPilot (running on the flight controller) and ROS 2 (running on the Jetson) is handled by the Micro-ROS Agent over USB serial (`/dev/ttyACM1`). The agent exposes all ArduPilot topics and services as standard ROS 2 interfaces.
+
+https://github.com/user-attachments/assets/32b5d3d2-b5cc-4b9b-9e0c-d8b86e58a120
+
+<!-- TODO: Add a screenshot or GIF of the simulation here -->
+<!-- ![Simulation Demo](docs/demo.gif) -->
 
 ---
 
@@ -129,14 +134,13 @@ ros2 topic list
 In a **new terminal**, start the navigation services. Here we **do not** use `use_sim_time` (the default is already `false`):
 
 ```bash
-ros2 launch drone_navigate avfl.launch.py
+ros2 launch drone_navigate drone_services.launch.py
 ```
 
 This launch file starts:
 - Navigation services (`/avfl/navigate`, `/avfl/navigate_global`)
-- Telemetry (`/get_telemetry`)
-- Yaw control (`/set_yaw_rate`)
-- ArUco detector (real camera)
+- Telemetry (`/avfl/get_telemetry`)
+- Yaw control (`/avfl/set_yaw_rate`)
 
 > **Alternative:** If you want to include the Micro-ROS Agent in the same launch (without starting it manually), use:
 > ```bash
