@@ -56,10 +56,6 @@ install(DIRECTORY
 # Install Python scripts
 install(PROGRAMS
   scripts/aruco.py
-  scripts/centralized_mission.py
-  scripts/generate_aruco_markers.py
-  scripts/simple_mission.py
-  scripts/view_camera.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -72,14 +68,14 @@ install(PROGRAMS
 
 # Install mission1 master node
 install(PROGRAMS
-  src/run_mission1.py
+  src/mission1/master_mission1.py
   DESTINATION lib/${PROJECT_NAME}
   RENAME master_mission1
 )
 
 # Install mission1 aruco detector node
 install(PROGRAMS
-  src/run_aruco_detector.py
+  src/mission1/aruco_detector.py
   DESTINATION lib/${PROJECT_NAME}
   RENAME aruco_detector
 )

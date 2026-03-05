@@ -25,7 +25,7 @@ def generate_launch_description():
 
     takeoff_alt_arg = DeclareLaunchArgument(
         'takeoff_alt',
-        default_value='10.0',
+        default_value='1.5',
         description='Takeoff altitude in meters above ground'
     )
 
